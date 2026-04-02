@@ -1,0 +1,73 @@
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+import json
+
+class MemoryCreate(BaseModel):
+    content: str
+    tags: list[str] = Field(default_factory=list)
+
+class MemoryUpdate(BaseModel):
+    content: str | None = None
+    tags: list[str] | None = None
+
+class Memory(BaseModel):
+    id: int
+    content: str
+    tags: list[str] = Field(default_factory=list)
+
+def find_next_id(data: list) -> int:
+    largest_id = 0
+    for item in data:
+        if item.get("id", 0) > largest_id:
+            largest_id = item["id"]
+    next_id = largest_id + 1
+    return next_id
+
+app = FastAPI()
+
+@app.post("/memories")
+async def post_memory(memory: MemoryCreate) -> Memory:
+    try:
+        with open('data.json', 'r') as file:
+            data = json.load(file)
+    except FileNotFoundError as e:
+        print(f"ERROR: {e}")
+        data = []
+    except json.JSONDecodeError as e:
+        print(f"ERROR: {e}")
+        data = []
+
+    
+    id = find_next_id(data)
+    memory = Memory(id=id, content=memory.content, tags=memory.tags)
+    data.append(memory.model_dump())
+
+    with open("data.json", "w") as file:
+        json.dump(data, file)
+    
+    return memory
+
+
+@app.post("/memories/batch")
+async def post_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
+    pass 
+
+@app.get("/memories")
+async def get_memories() -> list[Memory]:
+    pass
+
+@app.get("/memories/{memory_id}")
+async def get_memory_by_id(memory_id: int):
+    pass
+
+@app.patch("/memories/{memory_id}")
+async def patch_memory_by_id(memory_id: int, memory: MemoryUpdate):
+    pass
+
+@app.delete("/memories/{memory_id}")
+async def delete_memory_by_id(memory_id: int):
+    pass
+
+@app.get("/search")
+async def search_memories(query: str) -> list[Memory]:
+    pass
