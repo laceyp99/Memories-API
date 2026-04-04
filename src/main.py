@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import json
 
@@ -54,15 +54,55 @@ async def post_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
 
 @app.get("/memories")
 async def get_memories() -> list[Memory]:
-    pass
+    try:
+        with open('data.json', 'r') as file:
+            data = json.load(file)
+    except FileNotFoundError as e:
+        print(f"ERROR: {e}")
+        data = []
+    except json.JSONDecodeError as e:
+        print(f"ERROR: {e}")
+        data = []
+    return [Memory(**item) for item in data]
 
 @app.get("/memories/{memory_id}")
 async def get_memory_by_id(memory_id: int):
-    pass
+    try:
+        with open('data.json', 'r') as file:
+            data = json.load(file)
+    except FileNotFoundError as e:
+        print(f"ERROR: {e}")
+        data = []
+    except json.JSONDecodeError as e:
+        print(f"ERROR: {e}")
+        data = []
+    for item in data:
+        if item["id"] == memory_id:
+            return Memory(**item)
+    else:
+        raise HTTPException(status_code=404, detail="Memory not found")
 
 @app.patch("/memories/{memory_id}")
 async def patch_memory_by_id(memory_id: int, memory: MemoryUpdate):
-    pass
+    try:
+        with open('data.json', 'r') as file:
+            data = json.load(file)
+    except FileNotFoundError as e:
+        print(f"ERROR: {e}")
+        data = []
+    except json.JSONDecodeError as e:
+        print(f"ERROR: {e}")
+        data = []
+    update_data = memory.model_dump(exclude_unset=True)
+    for i, item in enumerate(data):
+        if item["id"] == memory_id:
+            item.update(update_data)
+            patch = Memory(**item)
+            data[i] = patch
+            return item
+
+    else:
+        raise HTTPException(status_code=404, detail="Memory not found")
 
 @app.delete("/memories/{memory_id}")
 async def delete_memory_by_id(memory_id: int):
