@@ -1,10 +1,24 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, field_validator
 import json
 
 class MemoryCreate(BaseModel):
     content: str
-    tags: list[str] = Field(default_factory=list)
+    tags: list[str]
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("content cannot be empty")
+        return value
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("tags cannot be empty")
+        return value
 
 class MemoryUpdate(BaseModel):
     content: str | None = None
@@ -13,7 +27,7 @@ class MemoryUpdate(BaseModel):
 class Memory(BaseModel):
     id: int
     content: str
-    tags: list[str] = Field(default_factory=list)
+    tags: list[str]
 
 def find_next_id(data: list) -> int:
     largest_id = 0
@@ -36,7 +50,6 @@ async def post_memory(memory: MemoryCreate) -> Memory:
     except json.JSONDecodeError as e:
         print(f"ERROR: {e}")
         data = []
-
     
     id = find_next_id(data)
     memory = Memory(id=id, content=memory.content, tags=memory.tags)
