@@ -1,7 +1,10 @@
 __pycache__/
 .pytest_cache/
-
-data.json
-
 */__pycache__/
 *.pyc
+.venv/
+.env
+.coverage
+.ruff_cache/
+*.egg-info/
+data.json
