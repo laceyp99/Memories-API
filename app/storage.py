@@ -1,7 +1,12 @@
 import json
+from datetime import UTC, datetime
 
 from app.config import get_data_file_path
 from app.schemas import Memory, MemoryCreate, MemoryUpdate
+
+
+def current_timestamp() -> str:
+    return datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def find_next_id(data: list[dict]) -> int:
@@ -32,10 +37,17 @@ def save_data(data: list[dict]) -> None:
 
 def create_memory(memory: MemoryCreate) -> Memory:
     data = load_data()
+    timestamp = current_timestamp()
     new_memory = Memory(
         id=find_next_id(data),
         content=memory.content,
         tags=memory.tags,
+        created_at=timestamp,
+        updated_at=timestamp,
+        last_accessed_at=None,
+        memory_type=memory.memory_type,
+        status=memory.status,
+        version=1,
     )
     data.append(new_memory.model_dump())
     save_data(data)
@@ -48,7 +60,18 @@ def create_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
     next_id = find_next_id(data)
 
     for memory in memories:
-        new_memory = Memory(id=next_id, content=memory.content, tags=memory.tags)
+        timestamp = current_timestamp()
+        new_memory = Memory(
+            id=next_id,
+            content=memory.content,
+            tags=memory.tags,
+            created_at=timestamp,
+            updated_at=timestamp,
+            last_accessed_at=None,
+            memory_type=memory.memory_type,
+            status=memory.status,
+            version=1,
+        )
         data.append(new_memory.model_dump())
         created_memories.append(new_memory)
         next_id += 1
@@ -62,9 +85,15 @@ def get_memories() -> list[Memory]:
 
 
 def get_memory(memory_id: int) -> Memory | None:
-    for item in load_data():
+    data = load_data()
+
+    for index, item in enumerate(data):
         if item["id"] == memory_id:
-            return Memory(**item)
+            item["last_accessed_at"] = current_timestamp()
+            memory = Memory(**item)
+            data[index] = memory.model_dump()
+            save_data(data)
+            return memory
     return None
 
 
@@ -74,7 +103,15 @@ def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
 
     for index, item in enumerate(data):
         if item["id"] == memory_id:
+            has_changes = any(
+                item.get(key) != value for key, value in update_data.items()
+            )
+            if not has_changes:
+                return Memory(**item)
+
             item.update(update_data)
+            item["updated_at"] = current_timestamp()
+            item["version"] += 1
             updated_memory = Memory(**item)
             data[index] = updated_memory.model_dump()
             save_data(data)

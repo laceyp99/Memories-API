@@ -1,6 +1,6 @@
 # Memories API
 
-A small FastAPI project for storing memories with tags in a JSON database.
+A small FastAPI project for storing memories with tags and lifecycle metadata in a JSON database.
 
 ## Project layout
 
@@ -41,6 +41,39 @@ Interactive docs are available at `http://127.0.0.1:8000/docs`.
 pytest
 ```
 
+## Current memory object
+
+The API currently stores and returns these fields:
+
+```json
+{
+	"id": 1,
+	"content": "User prefers concise answers.",
+	"tags": ["preference", "writing-style"],
+	"created_at": "2026-04-06T14:12:00.000000Z",
+	"updated_at": "2026-04-06T14:12:00.000000Z",
+	"last_accessed_at": null,
+	"memory_type": "preference",
+	"status": "active",
+	"version": 1
+}
+```
+
+Current request behavior:
+
+- `content` and `tags` are required on create.
+- `memory_type` and `status` are optional on create and patch.
+- `created_at`, `updated_at`, `last_accessed_at`, and `version` are server-managed.
+- `created_at` is set on POST.
+- `updated_at` is refreshed only when PATCH changes at least one editable field.
+- `last_accessed_at` is refreshed on GET `/memories/{id}`.
+- `version` starts at `1` and increments only when PATCH changes at least one editable field.
+
+Allowed values:
+
+- `memory_type`: `preference`, `fact`, `goal`, `identity`, `instruction`, `task_context`, `event`
+- `status`: `active`, `archived`, `superseded`, `invalid`, `deleted`
+
 ## Format and lint
 
 ```powershell
@@ -55,7 +88,7 @@ Create a memory:
 ```bash
 curl -X POST http://127.0.0.1:8000/memories \
 	-H "Content-Type: application/json" \
-	-d '{"content":"Learning FastAPI testing","tags":["python","api"]}'
+	-d '{"content":"Learning FastAPI testing","tags":["python","api"],"memory_type":"task_context"}'
 ```
 
 Create multiple memories:
@@ -86,7 +119,7 @@ Update a memory:
 ```bash
 curl -X PATCH http://127.0.0.1:8000/memories/1 \
 	-H "Content-Type: application/json" \
-	-d '{"content":"Practicing FastAPI testing"}'
+	-d '{"content":"Practicing FastAPI testing","status":"archived"}'
 ```
 
 Delete a memory:
