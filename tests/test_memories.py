@@ -41,7 +41,7 @@ def test_post_memory_returns_created_memory_with_defaults(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a POST request creates a memory with default values for 
+    Testing if a POST request creates a memory with default values for
     - `created_at`
     - `updated_at`
     - `last_accessed_at`
@@ -81,9 +81,9 @@ def test_post_memory_accepts_optional_memory_type_and_status(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a POST request creates a memory with optional 
-    - `memory_type` 
-    - `status` 
+    Testing if a POST request creates a memory with optional
+    - `memory_type`
+    - `status`
     fields included within the request.
 
     Args:
@@ -122,7 +122,7 @@ def test_post_memory_accepts_optional_memory_type_and_status(
 
 def test_post_memory_handles_memory_missing_tags(client: TestClient, data_file: Path):
     """
-    Testing if a POST request with missing `tags` field returns a 422 error 
+    Testing if a POST request with missing `tags` field returns a 422 error
     with the correct validation message.
 
     Args:
@@ -144,7 +144,7 @@ def test_post_memory_handles_memory_missing_content(
     client: TestClient, data_file: Path
 ):
     """
-    Testing if a POST request with missing `content` field returns a 422 error 
+    Testing if a POST request with missing `content` field returns a 422 error
     with the correct validation message.
 
     Args:
@@ -164,7 +164,7 @@ def test_post_memory_handles_memory_missing_content(
 
 def test_post_memory_rejects_invalid_memory_type(client: TestClient, data_file: Path):
     """
-    Testing if a POST request with an invalid `memory_type` field returns a 422 error 
+    Testing if a POST request with an invalid `memory_type` field returns a 422 error
     with the correct validation message.
 
     Args:
@@ -193,7 +193,7 @@ def test_post_memory_rejects_invalid_memory_type(client: TestClient, data_file: 
 
 def test_post_memory_rejects_invalid_status(client: TestClient, data_file: Path):
     """
-    Testing if a POST request with an invalid `status` field returns a 422 error 
+    Testing if a POST request with an invalid `status` field returns a 422 error
     with the correct validation message.
 
     Args:
@@ -220,7 +220,7 @@ def test_post_memory_rejects_invalid_status(client: TestClient, data_file: Path)
 
 def test_post_memory_rejects_server_managed_fields(client: TestClient, data_file: Path):
     """
-    Testing if a POST request with server-managed fields returns a 422 error 
+    Testing if a POST request with server-managed fields returns a 422 error
     with the correct validation message.
 
     Args:
@@ -257,11 +257,11 @@ def test_post_memory_batch_returns_created_memories_with_defaults(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a POST request to the /memories/batch endpoint creates 
+    Testing if a POST request to the /memories/batch endpoint creates
     multiple memories with default values for:
     - `created_at`
     - `updated_at`
-    - `last_accessed_at` 
+    - `last_accessed_at`
     fields because they are server-managed fields.
 
     Args:
@@ -336,7 +336,7 @@ def test_post_memory_batch_returns_created_memories_with_defaults(
 ## GET /memories tests
 def test_get_memories_empty_returns_empty_list(client: TestClient, data_file: Path):
     """
-    Testing if a GET request to the /memories endpoint returns an empty list 
+    Testing if a GET request to the /memories endpoint returns an empty list
     when there are no memories in the database.
 
     Args:
@@ -354,12 +354,12 @@ def test_get_memories_returns_expanded_shape_without_updating_access_time(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a GET request to the /memories endpoint returns memories 
+    Testing if a GET request to the /memories endpoint returns memories
     with the expanded shape.
-    Including 
+    Including
     - `created_at`
     - `updated_at`
-    - `last_accessed_at` 
+    - `last_accessed_at`
     fields without modifying the `last_accessed_at` timestamp.
 
     Args:
@@ -402,7 +402,7 @@ def test_get_memory_by_id_updates_last_accessed_at(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a GET request to the /memories/{id} endpoint updates 
+    Testing if a GET request to the /memories/{id} endpoint updates
     the `last_accessed_at` timestamp.
 
     Args:
@@ -445,7 +445,7 @@ def test_get_memory_by_id_updates_last_accessed_at(
 
 def test_get_memory_by_id_not_found_returns_404(client: TestClient, data_file: Path):
     """
-    Testing if a GET request to the /memories/{id} endpoint returns a 404 status 
+    Testing if a GET request to the /memories/{id} endpoint returns a 404 status
     code when the memory is not found.
 
     Args:
@@ -464,7 +464,7 @@ def test_patch_memory_by_id_updates_fields_and_increments_version(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a PATCH request to the /memories/{id} endpoint updates 
+    Testing if a PATCH request to the /memories/{id} endpoint updates
     the memory fields and increments the version.
 
     Args:
@@ -520,7 +520,7 @@ def test_patch_memory_by_id_partial_data_preserves_untouched_fields(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a PATCH request to the /memories/{id} endpoint with partial data 
+    Testing if a PATCH request to the /memories/{id} endpoint with partial data
     updates only the provided fields and preserves the untouched fields.
 
     Args:
@@ -572,7 +572,7 @@ def test_patch_memory_by_id_no_op_does_not_change_updated_at_or_version(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a PATCH request to the /memories/{id} endpoint with no changes 
+    Testing if a PATCH request to the /memories/{id} endpoint with no changes
     does not update the `updated_at` timestamp or increment the version.
 
     Args:
@@ -626,7 +626,7 @@ def test_patch_memory_rejects_invalid_status(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a PATCH request to the /memories/{id} endpoint with an invalid 
+    Testing if a PATCH request to the /memories/{id} endpoint with an invalid
     `status` field returns a 422 error with the correct validation message.
 
     Args:
@@ -670,7 +670,7 @@ def test_patch_memory_rejects_server_managed_fields(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a PATCH request to the /memories/{id} endpoint with server-managed 
+    Testing if a PATCH request to the /memories/{id} endpoint with server-managed
     fields returns a 422 error with the correct validation message.
 
     Args:
@@ -725,12 +725,12 @@ def test_delete_memory_by_id_returns_deleted_memory_with_full_shape(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a DELETE request to the /memories/{id} endpoint returns the 
+    Testing if a DELETE request to the /memories/{id} endpoint returns the
     deleted memory with the full shape.
-    Including: 
+    Including:
     - `created_at`
     - `updated_at`
-    - `last_accessed_at` 
+    - `last_accessed_at`
     fields and removes it from the database.
 
     Args:
@@ -771,8 +771,8 @@ def test_search_memories_returns_expanded_shape(
     client: TestClient, data_file: Path, monkeypatch
 ):
     """
-    Testing if a GET request to the /search endpoint returns memories with 
-    the expanded shape. 
+    Testing if a GET request to the /search endpoint returns memories with
+    the expanded shape.
     Including:
     - `created_at`
     - `updated_at`
