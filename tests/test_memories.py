@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app import storage
 
+
 ## Helper functions
 def read_database(data_file: Path) -> list[dict]:
     return json.loads(data_file.read_text(encoding="utf-8"))
@@ -33,11 +34,14 @@ def expected_memory(
         "version": version,
     }
 
+
 # POST /memories tests
-def test_post_memory_returns_created_memory_with_defaults(client: TestClient, data_file: Path, monkeypatch):
-    """ 
+def test_post_memory_returns_created_memory_with_defaults(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
     Testing if a POST request creates a memory with default values for `created_at`, `updated_at`, and `last_accessed_at`
-    fields because they are server-managed fields. 
+    fields because they are server-managed fields.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -69,8 +73,10 @@ def test_post_memory_returns_created_memory_with_defaults(client: TestClient, da
     assert read_database(data_file) == [expected]
 
 
-def test_post_memory_accepts_optional_memory_type_and_status(client: TestClient, data_file: Path, monkeypatch):
-    """ 
+def test_post_memory_accepts_optional_memory_type_and_status(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
     Testing if a POST request creates a memory with optional `memory_type` and `status` fields included within the request.
 
     Args:
@@ -108,8 +114,8 @@ def test_post_memory_accepts_optional_memory_type_and_status(client: TestClient,
 
 
 def test_post_memory_handles_memory_missing_tags(client: TestClient, data_file: Path):
-    """ 
-    Testing if a POST request with missing `tags` field returns a 422 error with the correct validation message. 
+    """
+    Testing if a POST request with missing `tags` field returns a 422 error with the correct validation message.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -126,9 +132,11 @@ def test_post_memory_handles_memory_missing_tags(client: TestClient, data_file: 
     assert read_database(data_file) == []
 
 
-def test_post_memory_handles_memory_missing_content(client: TestClient, data_file: Path):
-    """ 
-    Testing if a POST request with missing `content` field returns a 422 error with the correct validation message. 
+def test_post_memory_handles_memory_missing_content(
+    client: TestClient, data_file: Path
+):
+    """
+    Testing if a POST request with missing `content` field returns a 422 error with the correct validation message.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -146,8 +154,8 @@ def test_post_memory_handles_memory_missing_content(client: TestClient, data_fil
 
 
 def test_post_memory_rejects_invalid_memory_type(client: TestClient, data_file: Path):
-    """ 
-    Testing if a POST request with an invalid `memory_type` field returns a 422 error with the correct validation message. 
+    """
+    Testing if a POST request with an invalid `memory_type` field returns a 422 error with the correct validation message.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -174,8 +182,8 @@ def test_post_memory_rejects_invalid_memory_type(client: TestClient, data_file: 
 
 
 def test_post_memory_rejects_invalid_status(client: TestClient, data_file: Path):
-    """ 
-    Testing if a POST request with an invalid `status` field returns a 422 error with the correct validation message. 
+    """
+    Testing if a POST request with an invalid `status` field returns a 422 error with the correct validation message.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -200,8 +208,8 @@ def test_post_memory_rejects_invalid_status(client: TestClient, data_file: Path)
 
 
 def test_post_memory_rejects_server_managed_fields(client: TestClient, data_file: Path):
-    """ 
-    Testing if a POST request with server-managed fields returns a 422 error with the correct validation message. 
+    """
+    Testing if a POST request with server-managed fields returns a 422 error with the correct validation message.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -231,10 +239,13 @@ def test_post_memory_rejects_server_managed_fields(client: TestClient, data_file
     )
     assert read_database(data_file) == []
 
+
 ## POST /memories/batch tests
-def test_post_memory_batch_returns_created_memories_with_defaults(client: TestClient, data_file: Path, monkeypatch):
-    """ 
-    Testing if a POST request to the /memories/batch endpoint creates multiple memories with default values for 
+def test_post_memory_batch_returns_created_memories_with_defaults(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
+    Testing if a POST request to the /memories/batch endpoint creates multiple memories with default values for
     `created_at`, `updated_at`, and `last_accessed_at` fields because they are server-managed fields.
 
     Args:
@@ -305,9 +316,10 @@ def test_post_memory_batch_returns_created_memories_with_defaults(client: TestCl
     assert response.json() == expected
     assert read_database(data_file) == expected
 
+
 ## GET /memories tests
 def test_get_memories_empty_returns_empty_list(client: TestClient, data_file: Path):
-    """ 
+    """
     Testing if a GET request to the /memories endpoint returns an empty list when there are no memories in the database.
 
     Args:
@@ -321,8 +333,10 @@ def test_get_memories_empty_returns_empty_list(client: TestClient, data_file: Pa
     assert read_database(data_file) == []
 
 
-def test_get_memories_returns_expanded_shape_without_updating_access_time(client: TestClient, data_file: Path, monkeypatch):
-    """ 
+def test_get_memories_returns_expanded_shape_without_updating_access_time(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
     Testing if a GET request to the /memories endpoint returns memories with the expanded shape (including `created_at`, `updated_at`, and `last_accessed_at` fields) without modifying the `last_accessed_at` timestamp.
 
     Args:
@@ -359,9 +373,12 @@ def test_get_memories_returns_expanded_shape_without_updating_access_time(client
     assert response.json() == expected
     assert read_database(data_file) == expected
 
+
 ## GET /memories/{id} tests
-def test_get_memory_by_id_updates_last_accessed_at(client: TestClient, data_file: Path, monkeypatch):
-    """ 
+def test_get_memory_by_id_updates_last_accessed_at(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
     Testing if a GET request to the /memories/{id} endpoint updates the `last_accessed_at` timestamp.
 
     Args:
@@ -403,7 +420,7 @@ def test_get_memory_by_id_updates_last_accessed_at(client: TestClient, data_file
 
 
 def test_get_memory_by_id_not_found_returns_404(client: TestClient, data_file: Path):
-    """ 
+    """
     Testing if a GET request to the /memories/{id} endpoint returns a 404 status code when the memory is not found.
 
     Args:
@@ -416,9 +433,12 @@ def test_get_memory_by_id_not_found_returns_404(client: TestClient, data_file: P
     assert response.json() == {"detail": "Memory not found"}
     assert read_database(data_file) == []
 
+
 ## PATCH /memories/{id} tests
-def test_patch_memory_by_id_updates_fields_and_increments_version(client: TestClient, data_file: Path, monkeypatch):
-    """ 
+def test_patch_memory_by_id_updates_fields_and_increments_version(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
     Testing if a PATCH request to the /memories/{id} endpoint updates the memory fields and increments the version.
 
     Args:
@@ -470,9 +490,11 @@ def test_patch_memory_by_id_updates_fields_and_increments_version(client: TestCl
     assert read_database(data_file) == [expected]
 
 
-def test_patch_memory_by_id_partial_data_preserves_untouched_fields(client: TestClient, data_file: Path, monkeypatch):
-    """ 
-    Testing if a PATCH request to the /memories/{id} endpoint with partial data updates only the provided fields 
+def test_patch_memory_by_id_partial_data_preserves_untouched_fields(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
+    Testing if a PATCH request to the /memories/{id} endpoint with partial data updates only the provided fields
     and preserves the untouched fields.
 
     Args:
@@ -520,10 +542,12 @@ def test_patch_memory_by_id_partial_data_preserves_untouched_fields(client: Test
     assert read_database(data_file) == [expected]
 
 
-def test_patch_memory_by_id_no_op_does_not_change_updated_at_or_version(client: TestClient, data_file: Path, monkeypatch):
-    """ 
-    Testing if a PATCH request to the /memories/{id} endpoint with no changes does not update the `updated_at` timestamp 
-    or increment the version. 
+def test_patch_memory_by_id_no_op_does_not_change_updated_at_or_version(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
+    Testing if a PATCH request to the /memories/{id} endpoint with no changes does not update the `updated_at` timestamp
+    or increment the version.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -572,9 +596,11 @@ def test_patch_memory_by_id_no_op_does_not_change_updated_at_or_version(client: 
     assert read_database(data_file) == [expected]
 
 
-def test_patch_memory_rejects_invalid_status(client: TestClient, data_file: Path, monkeypatch):
-    """ 
-    Testing if a PATCH request to the /memories/{id} endpoint with an invalid `status` field returns a 422 error 
+def test_patch_memory_rejects_invalid_status(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
+    Testing if a PATCH request to the /memories/{id} endpoint with an invalid `status` field returns a 422 error
     with the correct validation message.
 
     Args:
@@ -614,9 +640,11 @@ def test_patch_memory_rejects_invalid_status(client: TestClient, data_file: Path
     ]
 
 
-def test_patch_memory_rejects_server_managed_fields(client: TestClient, data_file: Path, monkeypatch):
-    """ 
-    Testing if a PATCH request to the /memories/{id} endpoint with server-managed fields returns 
+def test_patch_memory_rejects_server_managed_fields(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
+    Testing if a PATCH request to the /memories/{id} endpoint with server-managed fields returns
     a 422 error with the correct validation message.
 
     Args:
@@ -665,10 +693,13 @@ def test_patch_memory_rejects_server_managed_fields(client: TestClient, data_fil
         )
     ]
 
+
 ## DELETE /memories/{id} tests
-def test_delete_memory_by_id_returns_deleted_memory_with_full_shape(client: TestClient, data_file: Path, monkeypatch):
-    """ 
-    Testing if a DELETE request to the /memories/{id} endpoint returns the deleted memory with the full shape (including `created_at`, `updated_at`, and `last_accessed_at` fields) and removes it from the database. 
+def test_delete_memory_by_id_returns_deleted_memory_with_full_shape(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
+    Testing if a DELETE request to the /memories/{id} endpoint returns the deleted memory with the full shape (including `created_at`, `updated_at`, and `last_accessed_at` fields) and removes it from the database.
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
@@ -702,11 +733,14 @@ def test_delete_memory_by_id_returns_deleted_memory_with_full_shape(client: Test
     assert response.json() == expected
     assert read_database(data_file) == []
 
+
 ## GET /search tests
-def test_search_memories_returns_expanded_shape(client: TestClient, data_file: Path, monkeypatch):
-    """ 
-    Testing if a GET request to the /search endpoint returns memories with the expanded shape 
-    (including `created_at`, `updated_at`, and `last_accessed_at` fields). 
+def test_search_memories_returns_expanded_shape(
+    client: TestClient, data_file: Path, monkeypatch
+):
+    """
+    Testing if a GET request to the /search endpoint returns memories with the expanded shape
+    (including `created_at`, `updated_at`, and `last_accessed_at` fields).
 
     Args:
         client (TestClient): The TestClient fixture for making requests to the FastAPI app.
