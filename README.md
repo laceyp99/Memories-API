@@ -33,13 +33,38 @@ pip install -e .[dev]
 uvicorn app.main:app --reload
 ```
 
-Interactive docs are available at `http://127.0.0.1:8000/docs`.
+Interactive docs are available at `http://localhost:8000/docs`.
 
-## Run tests
+## Use as an MCP Server
 
-```powershell
-pytest
+This project can also run as a local MCP server over stdio.
+
+### MCP-Compatible Clients
+
+Add to your claude_desktop_config.json or mcp-config.json file:
 ```
+{
+  "mcpServers": {
+    "memories-api": {
+      "command": "python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "path\to\Memories API",
+      "env": {
+        "MEMORIES_DATA_FILE": "path\to\Memories API\data.json"
+      }
+    }
+  }
+}
+```
+### Manual Start
+
+For local debugging, you can start the MCP Inspector:
+```
+memories-mcp-inspector
+```
+
+Interactive MCP Inspector available at `http://localhost:6274`.
+
 
 ## Current memory object
 
@@ -73,6 +98,12 @@ Allowed values:
 
 - `memory_type`: `preference`, `fact`, `goal`, `identity`, `instruction`, `task_context`, `event`
 - `status`: `active`, `archived`, `superseded`, `invalid`, `deleted`
+
+## Run tests
+
+```powershell
+pytest
+```
 
 ## Format and lint
 
