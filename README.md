@@ -60,7 +60,7 @@ Add to your claude_desktop_config.json or mcp-config.json file:
 
 For local debugging, you can start the MCP Inspector:
 ```
-memories-mcp-inspector
+mcp dev app/mcp_server.py
 ```
 
 Interactive MCP Inspector available at `http://localhost:6274`.

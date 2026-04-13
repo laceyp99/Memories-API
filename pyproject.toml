@@ -15,8 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-memories-mcp = "app.mcp_server:run"
-memories-mcp-inspector = "mcp dev app/mcp_server.py"
+memories-api-mcp = "app.mcp_server:run"
 
 [project.optional-dependencies]
 dev = [
@@ -29,8 +28,13 @@ dev = [
 pythonpath = ["."]
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+ignore = ["E501"]  # allow long lines
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "tab"

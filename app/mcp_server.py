@@ -10,7 +10,6 @@ from app.storage import (
 	update_memory,
 )
 
-
 mcp = FastMCP("memories-api")
 
 
