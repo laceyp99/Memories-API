@@ -9,13 +9,19 @@ app/
 	__init__.py
 	config.py
 	main.py
+	mcp_server.py
 	schemas.py
 	storage.py
 tests/
 	conftest.py
-	test_memories.py
+	contract/
+	helpers/
+	integration/
+	unit/
 .github/workflows/ci.yml
 data.json
+docs/
+	data_object_schema.md
 pyproject.toml
 ```
 
@@ -90,8 +96,11 @@ Current request behavior:
 - `memory_type` and `status` are optional on create and patch.
 - `created_at`, `updated_at`, `last_accessed_at`, and `version` are server-managed.
 - `created_at` is set on POST.
+- `POST /memories/batch` is all-or-nothing when validation fails.
 - `updated_at` is refreshed only when PATCH changes at least one editable field.
 - `last_accessed_at` is refreshed on GET `/memories/{id}`.
+- `GET /search` is case-insensitive and matches against `content` or `tags`.
+- `GET /search` does not update `last_accessed_at`.
 - `version` starts at `1` and increments only when PATCH changes at least one editable field.
 
 Allowed values:
@@ -103,6 +112,24 @@ Allowed values:
 
 ```powershell
 pytest
+```
+
+Run only the unit tests:
+
+```powershell
+pytest tests/unit
+```
+
+Run only the contract tests:
+
+```powershell
+pytest tests/contract
+```
+
+Run only the integration tests:
+
+```powershell
+pytest tests/integration
 ```
 
 ## Format and lint

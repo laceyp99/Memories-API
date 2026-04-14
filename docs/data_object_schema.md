@@ -33,15 +33,7 @@ Practical Implementation Advice
   "updated_at": "2026-04-06T14:12:00Z",
   "last_accessed_at": "2026-04-10T09:21:00Z",
   "memory_type": "preference",
-  "scope": "user",
-  "source": {
-    "kind": "conversation",
-    "actor": "user"
-  },
-  "importance": 0.82,
-  "confidence": 0.94,
   "status": "active",
-  "expires_at": null,
   "version": 1
 }
 ```
