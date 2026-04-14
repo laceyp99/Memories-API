@@ -1,7 +1,5 @@
 import pytest
 
-pytest.importorskip("mcp.server.fastmcp")
-
 from app.mcp_server import delete_memory_tool, search_memories_tool
 from app.schemas import Memory
 

@@ -1,7 +1,5 @@
 import pytest
 
-pytest.importorskip("mcp.server.fastmcp")
-
 from app.mcp_server import create_memory_tool, read_memory, serialize_memory
 from app.schemas import Memory
 
