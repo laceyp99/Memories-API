@@ -14,21 +14,13 @@ Elements
 5. [Updated At](#5-updated_at)
 6. [Last Accessed At](#6-last_accessed_at)
 7. [Memory Type](#7-memory_type)
-8. [Scope](#8-scope)
-9. [Source](#9-source)
-10. [Importance](#10-importance)
-11. [Confidence](#11-confidence)
-12. [Status](#12-status)
-13. [Expires At](#13-expires_at)
-14. [Version](#14-version)
+8. [Status](#8-status)
+9. [Version](#9-version)
 
 Practical Implementation Advice
 - [Best First Step](#best-first-step)
 - [Good Defaults](#good-defaults)
 - [Recommended Retrieval Mindset](#recommended-retrieval-mindset)
-
-
-
 
 ## Object Schema Example
 
@@ -241,147 +233,7 @@ Start with 5 to 7 enum values max. Add more only when you find retrieval or poli
 
 ---
 
-## 8. `scope`
-
-### What it is
-The boundary within which the memory is valid or should be reused.
-
-### Suggested values
-- `session`
-- `conversation`
-- `user`
-- `project`
-- `workspace`
-- `agent`
-
-### Why it matters
-Not all memories should travel everywhere. Scope prevents context leakage.
-
-### Why choose one scope over another
-- **`session`**: for very temporary context
-- **`conversation`**: for context that matters only within one thread
-- **`user`**: for preferences or facts that should persist across conversations
-- **`project`**: for work linked to a specific initiative
-- **`workspace`**: for team or organization-level context
-- **`agent`**: for internal operating knowledge specific to the agent
-
-### Recommendation
-If you are starting simple, support `conversation`, `user`, and `project` first.
-
----
-
-## 9. `source`
-
-### What it is
-Structured metadata describing where the memory came from.
-
-### Suggested shape
-```json
-{
-  "kind": "conversation",
-  "actor": "user"
-}
-```
-
-### Suggested `kind` values
-- `conversation`
-- `document`
-- `integration`
-- `manual`
-- `system`
-- `inferred`
-
-### Suggested `actor` values
-- `user`
-- `agent`
-- `system`
-- `external`
-
-### Why it matters
-Source affects trust, explainability, and update policy.
-
-### Why choose one source kind over another
-- **`conversation`**: user or agent said it in chat
-- **`document`**: extracted from a file or knowledge base
-- **`integration`**: came from a connected app or API
-- **`manual`**: explicitly entered by a human operator
-- **`system`**: created by application logic
-- **`inferred`**: guessed or synthesized from other data
-
-### Why choose one actor over another
-- **`user`**: usually highest trust for direct preferences
-- **`agent`**: useful for generated summaries, but may need more caution
-- **`system`**: trusted operational metadata
-- **`external`**: useful but may depend on source quality
-
-### Recommendation
-At minimum, store `kind` and `actor`. Later you can add things like `message_id` or `document_id`.
-
----
-
-## 10. `importance`
-
-### What it is
-A score representing how valuable the memory is for future reuse.
-
-### Possible value options
-- Float from `0.0` to `1.0`
-- Integer scale such as `1` to `5`
-- Enum such as `low`, `medium`, `high`
-
-### Why it matters
-Importance supports ranking, retention, summarization, and pruning.
-
-### Why choose one format over another
-- **Float `0.0–1.0`**: best for ranking systems and future tuning
-- **Integer `1–5`**: simpler for humans to reason about
-- **Enum**: easiest to understand, but least flexible
-
-### Recommendation
-Use a float from `0.0` to `1.0`. You can still map it to human-friendly buckets in the UI.
-
-### Example interpretation
-- `0.0–0.2`: likely disposable
-- `0.3–0.5`: useful but not critical
-- `0.6–0.8`: important
-- `0.9–1.0`: highly durable memory
-
----
-
-## 11. `confidence`
-
-### What it is
-A score representing how confident the system is that the memory is correct and well-extracted.
-
-### Possible value options
-- Float from `0.0` to `1.0`
-- Integer scale
-- Enum such as `uncertain`, `probable`, `confirmed`
-
-### Why it matters
-Importance and confidence are not the same. Something can be important but uncertain.
-
-### Why choose one format over another
-- **Float `0.0–1.0`**: more precise and easier for ranking formulas
-- **Integer**: simpler but less expressive
-- **Enum**: understandable, but coarse
-
-### Recommendation
-Use a float from `0.0` to `1.0`.
-
-### Example interpretation
-- `0.0–0.3`: weak inference or noisy extraction
-- `0.4–0.7`: plausible but should be used carefully
-- `0.8–1.0`: strong confidence, likely safe to reuse
-
-### When to lower confidence
-- The memory was inferred rather than directly stated
-- The source was ambiguous
-- The extraction process was lossy or probabilistic
-
----
-
-## 12. `status`
+## 8. `status`
 
 ### What it is
 The current lifecycle state of the memory.
@@ -408,36 +260,7 @@ At minimum support `active`, `superseded`, and `invalid`. Add `archived` and `de
 
 ---
 
-## 13. `expires_at`
-
-### What it is
-An optional timestamp after which the memory should no longer be treated as current.
-
-### Possible values
-- ISO 8601 UTC timestamp
-- `null` for non-expiring memories
-
-### Why it matters
-Some memories are temporary. Without expiration, stale context can pollute future agent behavior.
-
-### Why choose to use this field
-Use it when the truth of a memory is naturally time-bounded.
-
-### Good use cases
-- Temporary preferences
-- Short-term task context
-- Travel or schedule notes
-- Event windows
-
-### Why choose `null`
-Many durable memories, such as identity or long-term preferences, should not expire automatically.
-
-### Recommendation
-Default to `null`, and only set it when there is a clear time boundary.
-
----
-
-## 14. `version`
+## 9. `version`
 
 ### What it is
 A number that increments each time the record is updated.
@@ -463,26 +286,18 @@ Start at `1` and increment on every meaningful update.
 ## Best first step
 If you want to implement this quickly, define strict types for:
 - `memory_type`
-- `scope`
-- `source.kind`
-- `source.actor`
 - `status`
 
 And keep these flexible:
 - `content`
 - `tags`
-- `importance`
-- `confidence`
 
 ## Good defaults
 ```json
 {
   "tags": [],
   "last_accessed_at": null,
-  "importance": 0.5,
-  "confidence": 0.8,
   "status": "active",
-  "expires_at": null,
   "version": 1
 }
 ```
@@ -491,10 +306,6 @@ And keep these flexible:
 When retrieving memories, rank with a combination of:
 - semantic match to `content`
 - tag match
-- `scope`
 - `memory_type`
-- `importance`
-- `confidence`
 - recency from `updated_at` or `last_accessed_at`
 - whether `status` is still usable
-- whether `expires_at` has passed
