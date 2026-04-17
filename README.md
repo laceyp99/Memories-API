@@ -1,6 +1,6 @@
 # Memories API
 
-A small FastAPI project for storing memories with tags and lifecycle metadata in a JSON database.
+A small FastAPI project for storing memories with tags and lifecycle metadata in a SQLite database.
 
 ## Project layout
 
@@ -19,7 +19,7 @@ tests/
 	integration/
 	unit/
 .github/workflows/ci.yml
-data.json
+data.db
 docs/
 	data_object_schema.md
 pyproject.toml
@@ -56,7 +56,7 @@ Add to your claude_desktop_config.json or mcp-config.json file:
       "args": ["-m", "app.mcp_server"],
       "cwd": "path\to\Memories API",
       "env": {
-        "MEMORIES_DATA_FILE": "path\to\Memories API\data.json"
+		"MEMORIES_DATA_FILE": "path\to\Memories API\data.db"
       }
     }
   }
