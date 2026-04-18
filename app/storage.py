@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime
 
-from app.config import get_data_file_path
+from app.db import get_connection
 from app.schemas import Memory, MemoryCreate, MemoryUpdate
 
 
@@ -9,37 +9,68 @@ def current_timestamp() -> str:
 	return datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def find_next_id(data: list[dict]) -> int:
-	largest_id = 0
-	for item in data:
-		if item.get("id", 0) > largest_id:
-			largest_id = item["id"]
-	return largest_id + 1
+def _serialize_tags(tags: list[str]) -> str:
+	return json.dumps(tags)
 
 
-def load_data() -> list[dict]:
-	data_file = get_data_file_path()
-	try:
-		with data_file.open("r", encoding="utf-8") as file:
-			return json.load(file)
-	except FileNotFoundError:
-		return []
-	except json.JSONDecodeError:
-		return []
+def _row_to_memory(row) -> Memory:
+	return Memory(
+		id=row["id"],
+		content=row["content"],
+		tags=json.loads(row["tags"]),
+		created_at=row["created_at"],
+		updated_at=row["updated_at"],
+		last_accessed_at=row["last_accessed_at"],
+		memory_type=row["memory_type"],
+		status=row["status"],
+		version=row["version"],
+	)
 
 
-def save_data(data: list[dict]) -> None:
-	data_file = get_data_file_path()
-	data_file.parent.mkdir(parents=True, exist_ok=True)
-	with data_file.open("w", encoding="utf-8") as file:
-		json.dump(data, file)
+def _fetch_memory_row(connection, memory_id: int):
+	return connection.execute(
+		"""
+		SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
+		FROM memories
+		WHERE id = ?
+		""",
+		(memory_id,),
+	).fetchone()
 
 
 def create_memory(memory: MemoryCreate) -> Memory:
-	data = load_data()
 	timestamp = current_timestamp()
-	new_memory = Memory(
-		id=find_next_id(data),
+	with get_connection() as connection:
+		cursor = connection.execute(
+			"""
+			INSERT INTO memories (
+				content,
+				tags,
+				created_at,
+				updated_at,
+				last_accessed_at,
+				memory_type,
+				status,
+				version
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			""",
+			(
+				memory.content,
+				_serialize_tags(memory.tags),
+				timestamp,
+				timestamp,
+				None,
+				memory.memory_type,
+				memory.status,
+				1,
+			),
+		)
+		connection.commit()
+		memory_id = cursor.lastrowid
+
+	return Memory(
+		id=memory_id,
 		content=memory.content,
 		tags=memory.tags,
 		created_at=timestamp,
@@ -49,97 +80,146 @@ def create_memory(memory: MemoryCreate) -> Memory:
 		status=memory.status,
 		version=1,
 	)
-	data.append(new_memory.model_dump())
-	save_data(data)
-	return new_memory
 
 
 def create_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
-	data = load_data()
 	created_memories: list[Memory] = []
-	next_id = find_next_id(data)
+	with get_connection() as connection:
+		for memory in memories:
+			timestamp = current_timestamp()
+			cursor = connection.execute(
+				"""
+				INSERT INTO memories (
+					content,
+					tags,
+					created_at,
+					updated_at,
+					last_accessed_at,
+					memory_type,
+					status,
+					version
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				""",
+				(
+					memory.content,
+					_serialize_tags(memory.tags),
+					timestamp,
+					timestamp,
+					None,
+					memory.memory_type,
+					memory.status,
+					1,
+				),
+			)
+			created_memories.append(
+				Memory(
+					id=cursor.lastrowid,
+					content=memory.content,
+					tags=memory.tags,
+					created_at=timestamp,
+					updated_at=timestamp,
+					last_accessed_at=None,
+					memory_type=memory.memory_type,
+					status=memory.status,
+					version=1,
+				)
+			)
+		connection.commit()
 
-	for memory in memories:
-		timestamp = current_timestamp()
-		new_memory = Memory(
-			id=next_id,
-			content=memory.content,
-			tags=memory.tags,
-			created_at=timestamp,
-			updated_at=timestamp,
-			last_accessed_at=None,
-			memory_type=memory.memory_type,
-			status=memory.status,
-			version=1,
-		)
-		data.append(new_memory.model_dump())
-		created_memories.append(new_memory)
-		next_id += 1
-
-	save_data(data)
 	return created_memories
 
 
 def get_memories() -> list[Memory]:
-	return [Memory(**item) for item in load_data()]
+	with get_connection() as connection:
+		rows = connection.execute(
+			"""
+			SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
+			FROM memories
+			ORDER BY id
+			"""
+		).fetchall()
+	return [_row_to_memory(row) for row in rows]
 
 
 def get_memory(memory_id: int) -> Memory | None:
-	data = load_data()
+	with get_connection() as connection:
+		row = _fetch_memory_row(connection, memory_id)
+		if row is None:
+			return None
 
-	for index, item in enumerate(data):
-		if item["id"] == memory_id:
-			item["last_accessed_at"] = current_timestamp()
-			memory = Memory(**item)
-			data[index] = memory.model_dump()
-			save_data(data)
-			return memory
-	return None
+		last_accessed_at = current_timestamp()
+		connection.execute(
+			"UPDATE memories SET last_accessed_at = ? WHERE id = ?",
+			(last_accessed_at, memory_id),
+		)
+		connection.commit()
+
+		memory = _row_to_memory(row)
+		return memory.model_copy(update={"last_accessed_at": last_accessed_at})
 
 
 def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
-	data = load_data()
 	update_data = memory.model_dump(exclude_unset=True)
+	with get_connection() as connection:
+		row = _fetch_memory_row(connection, memory_id)
+		if row is None:
+			return None
 
-	for index, item in enumerate(data):
-		if item["id"] == memory_id:
-			has_changes = any(item.get(key) != value for key, value in update_data.items())
-			if not has_changes:
-				return Memory(**item)
+		existing_memory = _row_to_memory(row)
+		has_changes = any(
+			getattr(existing_memory, key) != value for key, value in update_data.items()
+		)
+		if not has_changes:
+			return existing_memory
 
-			item.update(update_data)
-			item["updated_at"] = current_timestamp()
-			item["version"] += 1
-			updated_memory = Memory(**item)
-			data[index] = updated_memory.model_dump()
-			save_data(data)
-			return updated_memory
+		updated_memory = existing_memory.model_copy(update=update_data)
+		updated_at = current_timestamp()
+		version = existing_memory.version + 1
+		connection.execute(
+			"""
+			UPDATE memories
+			SET content = ?, tags = ?, updated_at = ?, memory_type = ?, status = ?, version = ?
+			WHERE id = ?
+			""",
+			(
+				updated_memory.content,
+				_serialize_tags(updated_memory.tags),
+				updated_at,
+				updated_memory.memory_type,
+				updated_memory.status,
+				version,
+				memory_id,
+			),
+		)
+		connection.commit()
 
-	return None
+		return updated_memory.model_copy(update={"updated_at": updated_at, "version": version})
 
 
 def delete_memory(memory_id: int) -> Memory | None:
-	data = load_data()
+	with get_connection() as connection:
+		row = _fetch_memory_row(connection, memory_id)
+		if row is None:
+			return None
 
-	for index, item in enumerate(data):
-		if item["id"] == memory_id:
-			deleted_memory = Memory(**item)
-			data.pop(index)
-			save_data(data)
-			return deleted_memory
-
-	return None
+		deleted_memory = _row_to_memory(row)
+		connection.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+		connection.commit()
+		return deleted_memory
 
 
 def search_memories(query: str) -> list[Memory]:
 	query_lower = query.lower()
-	results: list[Memory] = []
-
-	for item in load_data():
-		memory = Memory(**item)
-		content_match = query_lower in memory.content.lower()
-		tags_match = any(query_lower in tag.lower() for tag in memory.tags)
-		if content_match or tags_match:
-			results.append(memory)
-
-	return results
+	query_pattern = f"%{query_lower}%"
+	with get_connection() as connection:
+		rows = connection.execute(
+			"""
+			SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
+			FROM memories
+			WHERE LOWER(content) LIKE ? OR LOWER(tags) LIKE ?
+			ORDER BY id
+			""",
+			(query_pattern, query_pattern),
+		).fetchall()
+	return [_row_to_memory(row) for row in rows]
