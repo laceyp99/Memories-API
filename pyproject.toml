@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "memories-api"
 version = "0.1.0"
-description = "A small FastAPI project for storing memories with tags in a JSON database."
+description = "A small FastAPI project for storing memories with tags in a SQLite database."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
