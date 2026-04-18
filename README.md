@@ -30,7 +30,7 @@ pyproject.toml
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -e .[dev]
+pip install .
 ```
 
 ## Run the API
