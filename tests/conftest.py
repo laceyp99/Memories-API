@@ -14,5 +14,5 @@ def client() -> TestClient:
 @pytest.fixture(autouse=True)
 def data_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 	file_path = tmp_path / "data.db"
-	monkeypatch.setenv("MEMORIES_DATA_FILE", str(file_path))
+	monkeypatch.setenv("MEMORIES_DB_FILE", str(file_path))
 	return file_path
