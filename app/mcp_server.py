@@ -4,7 +4,6 @@ from app.schemas import MemoryCreate, MemoryUpdate
 from app.storage import (
 	create_memory,
 	delete_memory,
-	get_memories,
 	get_memory,
 	search_memories,
 	update_memory,
@@ -17,22 +16,9 @@ def serialize_memory(memory) -> dict:
 	return memory.model_dump()
 
 
-@mcp.tool()
-def list_memories() -> list[dict]:
-	"""Return all stored memories."""
-	return [serialize_memory(memory) for memory in get_memories()]
-
-
-@mcp.tool()
-def read_memory(memory_id: int) -> dict:
-	"""Return one memory by id."""
-	memory = get_memory(memory_id)
-	if memory is None:
-		raise ValueError(f"Memory {memory_id} not found")
-	return serialize_memory(memory)
-
-
-@mcp.tool()
+@mcp.tool(
+	description="Create a new memory. Use this to store new information that you want to remember. Make sure the content is concise and informative, and use tags to categorize the memory for easy retrieval later."
+)
 def create_memory_tool(
 	content: str,
 	tags: list[str],
@@ -51,7 +37,9 @@ def create_memory_tool(
 	return serialize_memory(memory)
 
 
-@mcp.tool()
+@mcp.tool(
+	description="Update an existing memory. Use this to modify the content, tags, type, or status of a memory you have previously created."
+)
 def update_memory_tool(
 	memory_id: int,
 	content: str | None = None,
@@ -74,7 +62,9 @@ def update_memory_tool(
 	return serialize_memory(memory)
 
 
-@mcp.tool()
+@mcp.tool(
+	description="Delete a memory by its ID. Use this to remove a memory you no longer need or find irrelevant/untrue."
+)
 def delete_memory_tool(memory_id: int) -> dict:
 	"""Delete a memory by id and return the removed object."""
 	memory = delete_memory(memory_id)
@@ -83,10 +73,23 @@ def delete_memory_tool(memory_id: int) -> dict:
 	return serialize_memory(memory)
 
 
-@mcp.tool()
+@mcp.tool(
+	description="Search memories by content or tag. Use this to find memories that match a specific keyword, either in their content or associated tags."
+)
 def search_memories_tool(query: str) -> list[dict]:
 	"""Search memories by content or tag."""
 	return [serialize_memory(memory) for memory in search_memories(query)]
+
+
+@mcp.tool(
+	description="Read a memory by its ID. Use this only when you know the ID of the memory you want to read."
+)
+def read_memory(memory_id: int) -> dict:
+	"""Return one memory by id."""
+	memory = get_memory(memory_id)
+	if memory is None:
+		raise ValueError(f"Memory {memory_id} not found")
+	return serialize_memory(memory)
 
 
 def run() -> None:
