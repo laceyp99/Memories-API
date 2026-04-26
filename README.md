@@ -2,76 +2,6 @@
 
 A small FastAPI project for storing memories with tags and lifecycle metadata in a SQLite database.
 
-## Project layout
-
-```text
-app/
-	__init__.py
-	config.py
-	main.py
-	mcp_server.py
-	schemas.py
-	storage.py
-tests/
-	conftest.py
-	contract/
-	helpers/
-	integration/
-	unit/
-.github/workflows/ci.yml
-data.db
-docs/
-	data_object_schema.md
-pyproject.toml
-```
-
-## Setup
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install .
-```
-
-## Run the API
-
-```powershell
-uvicorn app.main:app --reload
-```
-
-Interactive docs are available at `http://localhost:8000/docs`.
-
-## Use as an MCP Server
-
-This project can also run as a local MCP server over stdio.
-
-### MCP-Compatible Clients
-
-Add to your claude_desktop_config.json or mcp-config.json file:
-```
-{
-  "mcpServers": {
-    "memories-api": {
-      "command": "python",
-      "args": ["-m", "app.mcp_server"],
-      "cwd": "path\to\Memories API",
-      "env": {
-		"MEMORIES_DATA_FILE": "path\to\Memories API\data.db"
-      }
-    }
-  }
-}
-```
-### Manual Start
-
-For local debugging, you can start the MCP Inspector:
-```
-mcp dev app/mcp_server.py
-```
-
-Interactive MCP Inspector available at `http://localhost:6274`.
-
-
 ## Current memory object
 
 The API currently stores and returns these fields:
@@ -108,7 +38,91 @@ Allowed values:
 - `memory_type`: `preference`, `fact`, `goal`, `identity`, `instruction`, `task_context`, `event`
 - `status`: `active`, `archived`, `superseded`, `invalid`, `deleted`
 
-## Run tests
+## Project layout
+
+```text
+app/
+	__init__.py
+	config.py
+	main.py
+	mcp_server.py
+	schemas.py
+	storage.py
+tests/
+	conftest.py
+	contract/
+	helpers/
+	integration/
+	unit/
+.github/workflows/ci.yml
+data.db
+docs/
+	data_object_schema.md
+pyproject.toml
+```
+
+## Security Model
+
+This project is intended for single-user, local-only use on a trusted machine.
+
+- The HTTP API and MCP server do not implement application-level authentication or authorization.
+- The MCP server is intended to be used locally over stdio by a local MCP client.
+- The HTTP API should only be bound to localhost for local development.
+- Do not expose this service to the internet, a LAN, a shared VM, or any untrusted environment.
+- Do not run it behind a reverse proxy or with host binding such as `0.0.0.0` unless you add proper authentication, authorization, and transport security.
+- Treat the SQLite database file and local MCP/client configuration as sensitive local data.
+
+If you need multi-user or remote access, this project’s current security model is insufficient.
+
+## Usage
+### Setup
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install .
+```
+
+### Run the API
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+Interactive docs are available at `http://localhost:8000/docs`.
+
+### Use as an MCP Server
+
+This project can also run as a local MCP server over stdio.
+
+### MCP-Compatible Clients
+
+Add to your claude_desktop_config.json or mcp-config.json file:
+```
+{
+  "mcpServers": {
+    "memories-api": {
+      "command": "python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "path\to\Memories API",
+      "env": {
+		"MEMORIES_DATA_FILE": "path\to\Memories API\data.db"
+      }
+    }
+  }
+}
+```
+
+### Manual Start
+
+For local debugging, you can start the MCP Inspector:
+```
+mcp dev app/mcp_server.py
+```
+
+Interactive MCP Inspector available at `http://localhost:6274`.
+
+### Run tests
 
 ```powershell
 pytest # The entire test suite
@@ -116,10 +130,9 @@ pytest # The entire test suite
 pytest tests/unit # only the unit tests
 pytest tests/contract # only the contract tests
 pytest tests/integration # only the integration tests
-
 ```
 
-## Format and lint
+### Format and lint
 
 ```powershell
 ruff format .
