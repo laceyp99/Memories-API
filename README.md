@@ -111,25 +111,12 @@ Allowed values:
 ## Run tests
 
 ```powershell
-pytest
-```
+pytest # The entire test suite
 
-Run only the unit tests:
+pytest tests/unit # only the unit tests
+pytest tests/contract # only the contract tests
+pytest tests/integration # only the integration tests
 
-```powershell
-pytest tests/unit
-```
-
-Run only the contract tests:
-
-```powershell
-pytest tests/contract
-```
-
-Run only the integration tests:
-
-```powershell
-pytest tests/integration
 ```
 
 ## Format and lint
