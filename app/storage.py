@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime
 
 from app.db import get_connection
-from app.schemas import Memory, MemoryCreate, MemoryUpdate
+from app.schemas import Memory, MemoryCreate, MemoryListQuery, MemoryUpdate
 
 
 def current_timestamp() -> str:
@@ -130,16 +130,54 @@ def create_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
 	return created_memories
 
 
-def get_memories() -> list[Memory]:
+def _build_memory_filters(query: MemoryListQuery | None) -> tuple[str, list[object]]:
+	if query is None:
+		return "", []
+
+	clauses: list[str] = []
+	parameters: list[object] = []
+
+	if query.status is not None:
+		clauses.append("status = ?")
+		parameters.append(query.status)
+
+	if query.memory_type is not None:
+		clauses.append("memory_type = ?")
+		parameters.append(query.memory_type)
+
+	if query.tag is not None:
+		clauses.append("EXISTS (SELECT 1 FROM json_each(memories.tags) WHERE json_each.value = ?)")
+		parameters.append(query.tag)
+
+	if query.q is not None:
+		query_pattern = f"%{query.q.lower()}%"
+		clauses.append("(LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)")
+		parameters.extend([query_pattern, query_pattern])
+
+	if not clauses:
+		return "", parameters
+
+	return "WHERE " + " AND ".join(clauses), parameters
+
+
+def _query_memories(query: MemoryListQuery | None = None) -> list[Memory]:
+	where_clause, parameters = _build_memory_filters(query)
+
 	with get_connection() as connection:
 		rows = connection.execute(
-			"""
+			f"""
 			SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
 			FROM memories
+			{where_clause}
 			ORDER BY id
-			"""
+			""",
+			parameters,
 		).fetchall()
 	return [_row_to_memory(row) for row in rows]
+
+
+def get_memories(query: MemoryListQuery | None = None) -> list[Memory]:
+	return _query_memories(query)
 
 
 def get_memory(memory_id: int) -> Memory | None:
@@ -210,16 +248,4 @@ def delete_memory(memory_id: int) -> Memory | None:
 
 
 def search_memories(query: str) -> list[Memory]:
-	query_lower = query.lower()
-	query_pattern = f"%{query_lower}%"
-	with get_connection() as connection:
-		rows = connection.execute(
-			"""
-			SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
-			FROM memories
-			WHERE LOWER(content) LIKE ? OR LOWER(tags) LIKE ?
-			ORDER BY id
-			""",
-			(query_pattern, query_pattern),
-		).fetchall()
-	return [_row_to_memory(row) for row in rows]
+	return _query_memories(MemoryListQuery(q=query))
