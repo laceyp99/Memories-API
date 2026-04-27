@@ -265,3 +265,55 @@ def test_get_memories_returns_pagination_metadata(client: TestClient, monkeypatc
 	assert body["offset"] == 1
 	assert body["has_more"] is False
 	assert [item["id"] for item in body["items"]] == [2, 3]
+
+
+def test_get_memories_updates_only_returned_page_items(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:14:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	for content in ["First", "Second", "Third"]:
+		client.post("/memories", json={"content": content, "tags": [content.lower()]})
+
+	response = client.get("/memories", params={"limit": 2, "offset": 1})
+
+	expected_items = [
+		expected_memory(
+			2,
+			"Second",
+			["second"],
+			created_at="2026-04-06T14:13:00.000000Z",
+			updated_at="2026-04-06T14:13:00.000000Z",
+			last_accessed_at="2026-04-06T14:30:00.000000Z",
+		),
+		expected_memory(
+			3,
+			"Third",
+			["third"],
+			created_at="2026-04-06T14:14:00.000000Z",
+			updated_at="2026-04-06T14:14:00.000000Z",
+			last_accessed_at="2026-04-06T14:30:00.000000Z",
+		),
+	]
+
+	assert response.status_code == 200
+	assert response.json() == _expected_page(items=expected_items, total=3, limit=2, offset=1)
+	assert read_database(data_file) == [
+		expected_memory(
+			1,
+			"First",
+			["first"],
+			created_at="2026-04-06T14:12:00.000000Z",
+			updated_at="2026-04-06T14:12:00.000000Z",
+			last_accessed_at=None,
+		),
+		*expected_items,
+	]

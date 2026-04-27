@@ -180,6 +180,24 @@ def get_memories(query: MemoryListQuery | None = None) -> list[Memory]:
 	return _query_memories(query)
 
 
+def refresh_memories_last_accessed(memories: list[Memory]) -> list[Memory]:
+	if not memories:
+		return memories
+
+	last_accessed_at = current_timestamp()
+	memory_ids = [memory.id for memory in memories]
+	placeholders = ", ".join("?" for _ in memory_ids)
+
+	with get_connection() as connection:
+		connection.execute(
+			f"UPDATE memories SET last_accessed_at = ? WHERE id IN ({placeholders})",
+			[last_accessed_at, *memory_ids],
+		)
+		connection.commit()
+
+	return [memory.model_copy(update={"last_accessed_at": last_accessed_at}) for memory in memories]
+
+
 def get_memory(memory_id: int) -> Memory | None:
 	with get_connection() as connection:
 		row = _fetch_memory_row(connection, memory_id)

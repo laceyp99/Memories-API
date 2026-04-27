@@ -15,6 +15,7 @@ from app.storage import (
 	delete_memory,
 	get_memories,
 	get_memory,
+	refresh_memories_last_accessed,
 	update_memory,
 )
 
@@ -51,10 +52,10 @@ def list_memories(query: Annotated[MemoryListQuery, Depends()]) -> MemoryListRes
 	sorted_memories = _sort_memories(get_memories(query), query.sort)
 	total = len(sorted_memories)
 	paged_memories = sorted_memories[query.offset : query.offset + query.limit]
-	items = [get_memory(memory.id) for memory in paged_memories]
+	items = refresh_memories_last_accessed(paged_memories)
 
 	return MemoryListResponse(
-		items=[memory for memory in items if memory is not None],
+		items=items,
 		total=total,
 		limit=query.limit,
 		offset=query.offset,
