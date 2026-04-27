@@ -60,3 +60,51 @@ def test_non_integer_memory_id_returns_validation_error_shape(client: TestClient
 		for error in body["detail"]
 	)
 	assert read_database(data_file) == []
+
+
+def test_get_memories_response_matches_public_contract(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	post_response = client.post(
+		"/memories",
+		json={
+			"content": "Learning FastAPI testing",
+			"tags": ["python", "api"],
+		},
+	)
+	assert post_response.status_code == 200
+
+	response = client.get("/memories")
+	body = response.json()
+
+	assert response.status_code == 200
+	assert isinstance(body, dict)
+	assert set(body) == {"items", "total", "limit", "offset", "has_more"}
+	assert body["total"] == 1
+	assert body["offset"] == 0
+	assert body["has_more"] is False
+	assert isinstance(body["limit"], int)
+	assert len(body["items"]) == 1
+	assert set(body["items"][0]) == {
+		"id",
+		"content",
+		"tags",
+		"created_at",
+		"updated_at",
+		"last_accessed_at",
+		"memory_type",
+		"status",
+		"version",
+	}
+	assert body["items"][0]["created_at"].endswith("Z")
+	assert body["items"][0]["updated_at"].endswith("Z")
+	assert body["items"][0]["last_accessed_at"].endswith("Z")
+	assert read_database(data_file) == body["items"]
