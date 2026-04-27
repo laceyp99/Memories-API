@@ -6,7 +6,7 @@ from helpers.memory_builders import expected_memory
 
 from app import storage
 
-DEFAULT_LIMIT = 50
+DEFAULT_LIMIT = 10
 
 
 def _expected_page(

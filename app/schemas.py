@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ALLOWED_MEMORY_TYPES = {
 	"preference",
@@ -10,6 +12,9 @@ ALLOWED_MEMORY_TYPES = {
 	"event",
 }
 ALLOWED_STATUSES = {"active", "archived", "superseded", "invalid", "deleted"}
+DEFAULT_PAGE_LIMIT = 10
+MAX_PAGE_LIMIT = 100
+ALLOWED_MEMORY_SORTS = {"id", "created_at", "updated_at", "last_accessed_at"}
 
 
 def validate_content_value(value: str) -> str:
@@ -125,3 +130,50 @@ class Memory(BaseModel):
 	memory_type: str
 	status: str
 	version: int
+
+
+class MemoryListQuery(BaseModel):
+	model_config = ConfigDict(extra="forbid")
+
+	status: str | None = None
+	memory_type: str | None = None
+	tag: str | None = None
+	q: str | None = None
+	sort: Literal["id", "created_at", "updated_at", "last_accessed_at"] = "id"
+	limit: int = Field(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT)
+	offset: int = Field(default=0, ge=0)
+
+	@field_validator("status")
+	@classmethod
+	def validate_status_filter(cls, value: str | None) -> str | None:
+		if value is None:
+			return value
+		return validate_status_value(value)
+
+	@field_validator("memory_type")
+	@classmethod
+	def validate_memory_type_filter(cls, value: str | None) -> str | None:
+		if value is None:
+			return value
+		return validate_memory_type_value(value)
+
+	@field_validator("tag", "q")
+	@classmethod
+	def validate_optional_text_filter(cls, value: str | None) -> str | None:
+		if value is None:
+			return value
+		if not isinstance(value, str):
+			raise ValueError("filter must be a string")
+		if not value.strip():
+			raise ValueError("filter cannot be empty")
+		return value
+
+
+class MemoryListResponse(BaseModel):
+	model_config = ConfigDict(extra="forbid")
+
+	items: list[Memory]
+	total: int = Field(ge=0)
+	limit: int = Field(ge=1, le=MAX_PAGE_LIMIT)
+	offset: int = Field(ge=0)
+	has_more: bool
