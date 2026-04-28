@@ -302,7 +302,3 @@ def delete_memory(memory_id: int) -> Memory | None:
 		connection.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
 		connection.commit()
 		return deleted_memory
-
-
-def search_memories(query: str) -> list[Memory]:
-	return _query_memories(MemoryListQuery(q=query))

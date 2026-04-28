@@ -1,6 +1,6 @@
 import pytest
 
-from app.mcp_server import create_memory_tool, read_memory, serialize_memory
+from app.mcp_server import create_memory_tool, query_memories_tool, read_memory, serialize_memory
 from app.schemas import Memory
 
 
@@ -51,3 +51,33 @@ def test_create_memory_tool_uses_schema_defaults(monkeypatch):
 	assert created["memory"].memory_type == "fact"
 	assert created["memory"].status == "active"
 	assert result["content"] == "Remember this"
+
+
+def test_query_memories_tool_uses_default_query_values(monkeypatch):
+	seen = {}
+
+	def fake_get_memories_page(query):
+		seen["query"] = query
+		return [], 0
+
+	monkeypatch.setattr("app.mcp_server.get_memories_page", fake_get_memories_page)
+	monkeypatch.setattr("app.mcp_server.refresh_memories_last_accessed", lambda memories: memories)
+
+	result = query_memories_tool()
+
+	assert seen["query"].model_dump() == {
+		"status": None,
+		"memory_type": None,
+		"tag": None,
+		"q": None,
+		"sort": "id",
+		"limit": 10,
+		"offset": 0,
+	}
+	assert result == {
+		"items": [],
+		"total": 0,
+		"limit": 10,
+		"offset": 0,
+		"has_more": False,
+	}

@@ -1,11 +1,12 @@
 from mcp.server.fastmcp import FastMCP
 
-from app.schemas import MemoryCreate, MemoryUpdate
+from app.schemas import MemoryCreate, MemoryListQuery, MemoryListResponse, MemoryUpdate
 from app.storage import (
 	create_memory,
 	delete_memory,
+	get_memories_page,
 	get_memory,
-	search_memories,
+	refresh_memories_last_accessed,
 	update_memory,
 )
 
@@ -74,11 +75,37 @@ def delete_memory_tool(memory_id: int) -> dict:
 
 
 @mcp.tool(
-	description="Search memories by content or tag. Use this to find memories that match a specific keyword, either in their content or associated tags."
+	description="Query memories with optional filters, free-text matching, deterministic sorting, and pagination. Use this to retrieve memories by status, type, tag, or q and inspect the paginated result envelope."
 )
-def search_memories_tool(query: str) -> list[dict]:
-	"""Search memories by content or tag."""
-	return [serialize_memory(memory) for memory in search_memories(query)]
+def query_memories_tool(
+	status: str | None = None,
+	memory_type: str | None = None,
+	tag: str | None = None,
+	q: str | None = None,
+	sort: str = "id",
+	limit: int = 10,
+	offset: int = 0,
+) -> dict:
+	"""Query memories using the same retrieval contract as the HTTP API."""
+	query = MemoryListQuery(
+		status=status,
+		memory_type=memory_type,
+		tag=tag,
+		q=q,
+		sort=sort,
+		limit=limit,
+		offset=offset,
+	)
+	paged_memories, total = get_memories_page(query)
+	items = refresh_memories_last_accessed(paged_memories)
+
+	return MemoryListResponse(
+		items=items,
+		total=total,
+		limit=query.limit,
+		offset=query.offset,
+		has_more=query.offset + len(items) < total,
+	).model_dump()
 
 
 @mcp.tool(

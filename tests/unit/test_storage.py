@@ -3,7 +3,6 @@ from app.storage import (
 	create_memory,
 	get_memories,
 	get_memories_page,
-	search_memories,
 	update_memory,
 )
 
@@ -16,7 +15,7 @@ def test_create_memory_assigns_incrementing_ids():
 	assert second.id == 2
 
 
-def test_search_memories_matches_content_and_tags_case_insensitively(monkeypatch):
+def test_get_memories_applies_free_text_filter_case_insensitively():
 	create_memory(MemoryCreate(content="Learning FastAPI testing", tags=["python", "api"]))
 	create_memory(
 		MemoryCreate(
@@ -26,7 +25,7 @@ def test_search_memories_matches_content_and_tags_case_insensitively(monkeypatch
 		)
 	)
 
-	results = search_memories("sql")
+	results = get_memories(MemoryListQuery(q="sql"))
 
 	assert [memory.id for memory in results] == [2]
 
