@@ -1,6 +1,6 @@
 # Memory Data Object Schema
 
-This document breaks down a lean but capable memory object for an AI agent. The goal is to keep the schema small and easy to manage, while still giving the agent enough structure to store, rank, update, and safely reuse memory over time.
+This document describes the memory object used by this project and the retrieval model built around it. The goal is to keep the schema lean while still supporting safe updates, deterministic retrieval, and future ranking strategies.
 
 ## Table of Contents
 
@@ -26,12 +26,12 @@ Practical Implementation Advice
 
 ```json
 {
-  "id": "mem_01JXYZ...",
+  "id": 1,
   "content": "User prefers concise answers with examples.",
   "tags": ["preference", "writing-style", "concise"],
-  "created_at": "2026-04-06T14:12:00Z",
-  "updated_at": "2026-04-06T14:12:00Z",
-  "last_accessed_at": "2026-04-10T09:21:00Z",
+  "created_at": "2026-04-06T14:12:00.000000Z",
+  "updated_at": "2026-04-06T14:12:00.000000Z",
+  "last_accessed_at": "2026-04-10T09:21:00.000000Z",
   "memory_type": "preference",
   "status": "active",
   "version": 1
@@ -46,26 +46,13 @@ Practical Implementation Advice
 A stable unique identifier for the memory record.
 
 ### Typical values
-- String UUID
-- ULID
-- Database-generated ID
-- Prefixed string such as `mem_abc123`
-
-### Recommended format
-- `mem_<unique_value>`
-- Example: `mem_01JXYZ8M2KQ4...`
+- Database-generated integer ID
 
 ### Why it matters
 Without an `id`, you cannot reliably update, delete, merge, supersede, or reference a memory later.
 
-### Why choose one format over another
-- **UUID**: good default, widely supported, easy to generate
-- **ULID**: useful if you want sortable IDs by creation time
-- **Prefixed IDs**: easier for debugging and log readability
-- **Database integer IDs**: simple internally, but less portable across systems
-
 ### Recommendation
-Use a prefixed ULID or UUID string. It is readable, portable, and safe across distributed systems.
+Use a database-generated integer ID if the service owns persistence end to end. It is simple, compact, and works well with deterministic tie-breaking in retrieval.
 
 ---
 
@@ -166,6 +153,8 @@ A record can be old overall but recently corrected/patched. Keeping both fields 
 ### Recommendation
 Always update this field whenever any meaningful part of the record changes.
 
+In this project, `updated_at` changes only when PATCH actually modifies at least one editable field.
+
 ---
 
 ## 6. `last_accessed_at`
@@ -191,6 +180,8 @@ This is useful for ranking, retention, pruning, and decay strategies.
 
 ### Recommendation
 Use `null` initially unless your system explicitly treats creation as a read event.
+
+In this project, `last_accessed_at` is refreshed when a client reads one memory directly or when retrieval returns a memory in a paginated result set.
 
 ---
 
@@ -221,7 +212,7 @@ Different memory types should be ranked and retained differently.
 - **`event`**: use for time-linked things that happened or will happen
 
 ### Recommendation
-Start with 5 to 7 enum values max. Add more only when you find retrieval or policy behavior needs them.
+Start with 5 to 7 enum values max. Add more only when retrieval or policy behavior clearly needs them.
 
 ---
 
@@ -271,6 +262,81 @@ Versioning supports safe updates, concurrency control, and auditability.
 ### Recommendation
 Start at `1` and increment on every meaningful update.
 
+In this project, `version` increments only when PATCH changes the record.
+
+---
+
+# Retrieval contract
+
+This project uses one retrieval contract across HTTP and MCP.
+
+- HTTP: `GET /memories`
+- MCP: `query_memories_tool`
+
+Both surfaces accept the same query fields:
+
+- `status`
+- `memory_type`
+- `tag`
+- `q`
+- `sort`
+- `limit`
+- `offset`
+
+Both surfaces return the same envelope:
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "limit": 10,
+  "offset": 0,
+  "has_more": false
+}
+```
+
+## Filter semantics
+
+- `status` and `memory_type` are exact structured filters.
+- `tag` is exact matching against the stored tag list.
+- `q` is case-insensitive free-text matching over `content` and stored tags.
+- Filters compose with `AND`.
+
+This distinction matters because exact filters are predictable and contract-friendly, while `q` provides a lightweight lexical narrowing mechanism without introducing opaque ranking behavior.
+
+## Sort and pagination semantics
+
+- Allowed sort keys are `id`, `created_at`, `updated_at`, and `last_accessed_at`.
+- `id` sorts ascending.
+- Other sort keys sort descending with `id DESC` as a stable tie-breaker.
+- `limit` defaults to `10` and is capped at `100`.
+- `offset` defaults to `0`.
+- `total` counts matches before pagination.
+- `has_more` tells the caller whether another page exists.
+
+These rules keep retrieval deterministic, which makes pagination reliable and prevents page boundaries from drifting unpredictably when multiple rows share the same timestamp.
+
+## Access-time rationale
+
+`last_accessed_at` is not just an audit field. It is part of the retrieval model.
+
+- A memory returned to the caller has been used and should be marked as accessed.
+- Only returned rows are refreshed.
+- Filtered-out rows and rows outside the current page are not refreshed.
+
+That design keeps access history meaningful for future retention, decay, and ranking logic. It avoids the misleading outcome where a broad query updates timestamps for many records the agent never actually saw.
+
+## Ranking rationale
+
+This project intentionally keeps today's retrieval logic deterministic.
+
+- Structured filters narrow the candidate set.
+- `q` provides case-insensitive lexical matching over `content` and tags.
+- Explicit sort keys define presentation order.
+- Pagination is applied after deterministic ordering.
+
+That is different from semantic search. If you later add vector-based retrieval, treat it as a separate ranking mode or dedicated search tool instead of changing the meaning of this contract in place.
+
 ---
 
 # Practical implementation advice
@@ -287,7 +353,7 @@ And keep these flexible:
 ## Good defaults
 ```json
 {
-  "tags": [],
+  "memory_type": "fact",
   "last_accessed_at": null,
   "status": "active",
   "version": 1
@@ -295,9 +361,10 @@ And keep these flexible:
 ```
 
 ## Recommended retrieval mindset
-When retrieving memories, rank with a combination of:
-- semantic match to `content`
-- tag match
-- `memory_type`
-- recency from `updated_at` or `last_accessed_at`
-- whether `status` is still usable
+When retrieving memories in this implementation, start with:
+- exact lifecycle filters such as `status`
+- exact structural filters such as `memory_type` and `tag`
+- lightweight `q` matching over `content` and tags
+- explicit deterministic sort keys
+
+If you later add semantic search, combine that ranking with the existing lifecycle and access signals rather than replacing them blindly.
