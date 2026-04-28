@@ -4,6 +4,13 @@ from datetime import UTC, datetime
 from app.db import get_connection
 from app.schemas import Memory, MemoryCreate, MemoryListQuery, MemoryUpdate
 
+MEMORY_SORT_COLUMNS = {
+	"id": "id",
+	"created_at": "created_at",
+	"updated_at": "updated_at",
+	"last_accessed_at": "last_accessed_at",
+}
+
 
 def current_timestamp() -> str:
 	return datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
@@ -160,6 +167,14 @@ def _build_memory_filters(query: MemoryListQuery | None) -> tuple[str, list[obje
 	return "WHERE " + " AND ".join(clauses), parameters
 
 
+def _build_memory_order_by(sort_key: str) -> str:
+	column = MEMORY_SORT_COLUMNS[sort_key]
+	if sort_key == "id":
+		return f"ORDER BY {column} ASC"
+
+	return f"ORDER BY {column} DESC, id DESC"
+
+
 def _query_memories(query: MemoryListQuery | None = None) -> list[Memory]:
 	where_clause, parameters = _build_memory_filters(query)
 
@@ -174,6 +189,30 @@ def _query_memories(query: MemoryListQuery | None = None) -> list[Memory]:
 			parameters,
 		).fetchall()
 	return [_row_to_memory(row) for row in rows]
+
+
+def get_memories_page(query: MemoryListQuery) -> tuple[list[Memory], int]:
+	where_clause, parameters = _build_memory_filters(query)
+	order_by_clause = _build_memory_order_by(query.sort)
+	paging_parameters = [*parameters, query.limit, query.offset]
+
+	with get_connection() as connection:
+		total = connection.execute(
+			f"SELECT COUNT(*) FROM memories {where_clause}",
+			parameters,
+		).fetchone()[0]
+		rows = connection.execute(
+			f"""
+			SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
+			FROM memories
+			{where_clause}
+			{order_by_clause}
+			LIMIT ? OFFSET ?
+			""",
+			paging_parameters,
+		).fetchall()
+
+	return [_row_to_memory(row) for row in rows], total
 
 
 def get_memories(query: MemoryListQuery | None = None) -> list[Memory]:

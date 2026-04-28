@@ -214,30 +214,134 @@ def test_get_memories_filters_by_free_text_query_case_insensitively(
 def test_get_memories_supports_explicit_sort_options_with_stable_tiebreaker(
 	client: TestClient, monkeypatch
 ):
-	timestamp = "2026-04-06T14:12:00.000000Z"
-	monkeypatch.setattr(storage, "current_timestamp", lambda: timestamp)
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
 
-	client.post(
-		"/memories",
-		json={
-			"content": "First memory",
-			"tags": ["one"],
-		},
-	)
-	client.post(
-		"/memories",
-		json={
-			"content": "Second memory",
-			"tags": ["two"],
-		},
-	)
+	for content, tag in [
+		("First memory", "one"),
+		("Second memory", "two"),
+		("Third memory", "three"),
+	]:
+		client.post(
+			"/memories",
+			json={
+				"content": content,
+				"tags": [tag],
+			},
+		)
 
 	response = client.get("/memories", params={"sort": "created_at"})
 
 	assert response.status_code == 200
 	body = response.json()
 	assert isinstance(body, dict)
-	assert [item["id"] for item in body["items"]] == [2, 1]
+	assert [item["id"] for item in body["items"]] == [3, 2, 1]
+
+
+def test_get_memories_sorts_by_updated_at_with_stable_id_tiebreaker(
+	client: TestClient, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:14:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	for content in ["First", "Second", "Third"]:
+		client.post("/memories", json={"content": content, "tags": [content.lower()]})
+
+	client.patch("/memories/1", json={"status": "archived"})
+	client.patch("/memories/2", json={"status": "archived"})
+
+	response = client.get("/memories", params={"sort": "updated_at"})
+
+	assert response.status_code == 200
+	assert [item["id"] for item in response.json()["items"]] == [2, 1, 3]
+
+
+def test_get_memories_sorts_by_last_accessed_at_with_stable_id_tiebreaker(
+	client: TestClient, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:14:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	for content in ["First", "Second", "Third"]:
+		client.post("/memories", json={"content": content, "tags": [content.lower()]})
+
+	client.get("/memories/1")
+	client.get("/memories/2")
+
+	response = client.get("/memories", params={"sort": "last_accessed_at"})
+
+	assert response.status_code == 200
+	assert [item["id"] for item in response.json()["items"]] == [2, 1, 3]
+
+
+def test_get_memories_sorts_by_id_ascending(client: TestClient, monkeypatch):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:14:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	for content in ["First", "Second", "Third"]:
+		client.post("/memories", json={"content": content, "tags": [content.lower()]})
+
+	response = client.get("/memories", params={"sort": "id"})
+
+	assert response.status_code == 200
+	assert [item["id"] for item in response.json()["items"]] == [1, 2, 3]
+
+
+def test_get_memories_returns_has_more_for_non_terminal_pages(client: TestClient, monkeypatch):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:14:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	for content in ["First", "Second", "Third"]:
+		client.post("/memories", json={"content": content, "tags": [content.lower()]})
+
+	response = client.get("/memories", params={"limit": 2, "offset": 0})
+
+	assert response.status_code == 200
+	body = response.json()
+	assert body["total"] == 3
+	assert body["limit"] == 2
+	assert body["offset"] == 0
+	assert body["has_more"] is True
+	assert [item["id"] for item in body["items"]] == [1, 2]
 
 
 def test_get_memories_returns_pagination_metadata(client: TestClient, monkeypatch):
@@ -316,4 +420,42 @@ def test_get_memories_updates_only_returned_page_items(
 			last_accessed_at=None,
 		),
 		*expected_items,
+	]
+
+
+def test_get_memories_offset_past_end_returns_empty_page_without_refreshing_rows(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	client.post("/memories", json={"content": "First", "tags": ["first"]})
+	client.post("/memories", json={"content": "Second", "tags": ["second"]})
+
+	response = client.get("/memories", params={"limit": 2, "offset": 5})
+
+	assert response.status_code == 200
+	assert response.json() == _expected_page(items=[], total=2, limit=2, offset=5)
+	assert read_database(data_file) == [
+		expected_memory(
+			1,
+			"First",
+			["first"],
+			created_at="2026-04-06T14:12:00.000000Z",
+			updated_at="2026-04-06T14:12:00.000000Z",
+			last_accessed_at=None,
+		),
+		expected_memory(
+			2,
+			"Second",
+			["second"],
+			created_at="2026-04-06T14:13:00.000000Z",
+			updated_at="2026-04-06T14:13:00.000000Z",
+			last_accessed_at=None,
+		),
 	]

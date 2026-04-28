@@ -1,5 +1,11 @@
 from app.schemas import MemoryCreate, MemoryListQuery, MemoryUpdate
-from app.storage import create_memory, get_memories, search_memories, update_memory
+from app.storage import (
+	create_memory,
+	get_memories,
+	get_memories_page,
+	search_memories,
+	update_memory,
+)
 
 
 def test_create_memory_assigns_incrementing_ids():
@@ -54,6 +60,49 @@ def test_get_memories_applies_structured_filters_with_exact_tag_matching():
 	)
 
 	assert [memory.id for memory in results] == [1]
+
+
+def test_get_memories_page_sorts_by_created_at_with_stable_id_tiebreaker(monkeypatch):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+		]
+	)
+	monkeypatch.setattr("app.storage.current_timestamp", lambda: next(timestamps))
+
+	for content in ["First", "Second", "Third"]:
+		create_memory(MemoryCreate(content=content, tags=[content.lower()]))
+
+	items, total = get_memories_page(MemoryListQuery(sort="created_at", limit=2, offset=0))
+
+	assert total == 3
+	assert [memory.id for memory in items] == [3, 2]
+
+
+def test_get_memories_page_sorts_by_last_accessed_at_and_counts_full_result(monkeypatch):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:14:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr("app.storage.current_timestamp", lambda: next(timestamps))
+
+	for content in ["First", "Second", "Third"]:
+		create_memory(MemoryCreate(content=content, tags=[content.lower()]))
+
+	assert update_memory(1, MemoryUpdate(status="archived")) is not None
+	assert update_memory(2, MemoryUpdate(status="archived")) is not None
+
+	items, total = get_memories_page(MemoryListQuery(sort="updated_at", limit=2, offset=0))
+
+	assert total == 3
+	assert [memory.id for memory in items] == [2, 1]
 
 
 def test_update_memory_returns_existing_memory_without_refreshing_timestamp(monkeypatch):

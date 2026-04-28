@@ -13,28 +13,13 @@ from app.storage import (
 	create_memory,
 	create_memory_batch,
 	delete_memory,
-	get_memories,
+	get_memories_page,
 	get_memory,
 	refresh_memories_last_accessed,
 	update_memory,
 )
 
 app = FastAPI(title="Memories API")
-
-
-def _sort_memories(memories: list[Memory], sort_key: str) -> list[Memory]:
-	if sort_key == "id":
-		return sorted(memories, key=lambda memory: memory.id)
-
-	return sorted(
-		memories,
-		key=lambda memory: (
-			getattr(memory, sort_key) is not None,
-			getattr(memory, sort_key) or "",
-			memory.id,
-		),
-		reverse=True,
-	)
 
 
 @app.post("/memories")
@@ -49,9 +34,7 @@ def post_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
 
 @app.get("/memories")
 def list_memories(query: Annotated[MemoryListQuery, Depends()]) -> MemoryListResponse:
-	sorted_memories = _sort_memories(get_memories(query), query.sort)
-	total = len(sorted_memories)
-	paged_memories = sorted_memories[query.offset : query.offset + query.limit]
+	paged_memories, total = get_memories_page(query)
 	items = refresh_memories_last_accessed(paged_memories)
 
 	return MemoryListResponse(
@@ -59,7 +42,7 @@ def list_memories(query: Annotated[MemoryListQuery, Depends()]) -> MemoryListRes
 		total=total,
 		limit=query.limit,
 		offset=query.offset,
-		has_more=query.offset + len(paged_memories) < total,
+		has_more=query.offset + len(items) < total,
 	)
 
 
