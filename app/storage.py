@@ -45,6 +45,17 @@ def _fetch_memory_row(connection, memory_id: int):
 	).fetchone()
 
 
+def _fetch_visible_memory_row(connection, memory_id: int):
+	return connection.execute(
+		"""
+		SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
+		FROM memories
+		WHERE id = ? AND status != 'deleted'
+		""",
+		(memory_id,),
+	).fetchone()
+
+
 def create_memory(memory: MemoryCreate) -> Memory:
 	timestamp = current_timestamp()
 	with get_connection() as connection:
@@ -239,7 +250,7 @@ def refresh_memories_last_accessed(memories: list[Memory]) -> list[Memory]:
 
 def get_memory(memory_id: int) -> Memory | None:
 	with get_connection() as connection:
-		row = _fetch_memory_row(connection, memory_id)
+		row = _fetch_visible_memory_row(connection, memory_id)
 		if row is None:
 			return None
 
@@ -257,7 +268,7 @@ def get_memory(memory_id: int) -> Memory | None:
 def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
 	update_data = memory.model_dump(exclude_unset=True)
 	with get_connection() as connection:
-		row = _fetch_memory_row(connection, memory_id)
+		row = _fetch_visible_memory_row(connection, memory_id)
 		if row is None:
 			return None
 
@@ -294,11 +305,22 @@ def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
 
 def delete_memory(memory_id: int) -> Memory | None:
 	with get_connection() as connection:
-		row = _fetch_memory_row(connection, memory_id)
+		row = _fetch_visible_memory_row(connection, memory_id)
 		if row is None:
 			return None
 
-		deleted_memory = _row_to_memory(row)
-		connection.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+		existing_memory = _row_to_memory(row)
+		updated_at = current_timestamp()
+		version = existing_memory.version + 1
+		connection.execute(
+			"""
+			UPDATE memories
+			SET status = ?, updated_at = ?, version = ?
+			WHERE id = ?
+			""",
+			("deleted", updated_at, version, memory_id),
+		)
 		connection.commit()
-		return deleted_memory
+		return existing_memory.model_copy(
+			update={"status": "deleted", "updated_at": updated_at, "version": version}
+		)
