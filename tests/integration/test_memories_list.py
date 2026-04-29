@@ -29,6 +29,128 @@ def test_get_memories_empty_returns_paginated_response(client: TestClient, data_
 	assert read_database(data_file) == []
 
 
+def test_get_memories_excludes_deleted_memories_by_default(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	client.post(
+		"/memories",
+		json={
+			"content": "Keep me",
+			"tags": ["active"],
+		},
+	)
+	client.post(
+		"/memories",
+		json={
+			"content": "Delete me",
+			"tags": ["deleted"],
+		},
+	)
+
+	delete_response = client.delete("/memories/2")
+	assert delete_response.status_code == 200
+
+	response = client.get("/memories")
+
+	expected_items = [
+		expected_memory(
+			1,
+			"Keep me",
+			["active"],
+			created_at="2026-04-06T14:12:00.000000Z",
+			updated_at="2026-04-06T14:12:00.000000Z",
+			last_accessed_at="2026-04-06T14:30:00.000000Z",
+		)
+	]
+
+	assert response.status_code == 200
+	assert response.json() == _expected_page(items=expected_items, total=1)
+	assert read_database(data_file) == [
+		expected_items[0],
+		expected_memory(
+			2,
+			"Delete me",
+			["deleted"],
+			created_at="2026-04-06T14:13:00.000000Z",
+			updated_at="2026-04-06T14:20:00.000000Z",
+			last_accessed_at=None,
+			status="deleted",
+			version=2,
+		),
+	]
+
+
+def test_get_memories_can_filter_explicitly_for_deleted_memories(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:13:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+			"2026-04-06T14:30:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	client.post(
+		"/memories",
+		json={
+			"content": "Keep me",
+			"tags": ["active"],
+		},
+	)
+	client.post(
+		"/memories",
+		json={
+			"content": "Delete me",
+			"tags": ["deleted"],
+		},
+	)
+
+	delete_response = client.delete("/memories/2")
+	assert delete_response.status_code == 200
+
+	response = client.get("/memories", params={"status": "deleted"})
+
+	expected_items = [
+		expected_memory(
+			2,
+			"Delete me",
+			["deleted"],
+			created_at="2026-04-06T14:13:00.000000Z",
+			updated_at="2026-04-06T14:20:00.000000Z",
+			last_accessed_at="2026-04-06T14:30:00.000000Z",
+			status="deleted",
+			version=2,
+		)
+	]
+
+	assert response.status_code == 200
+	assert response.json() == _expected_page(items=expected_items, total=1)
+	assert read_database(data_file) == [
+		expected_memory(
+			1,
+			"Keep me",
+			["active"],
+			created_at="2026-04-06T14:12:00.000000Z",
+			updated_at="2026-04-06T14:12:00.000000Z",
+			last_accessed_at=None,
+		),
+		expected_items[0],
+	]
+
+
 def test_get_memories_returns_paginated_shape_and_updates_last_accessed_at(
 	client: TestClient, data_file: Path, monkeypatch
 ):

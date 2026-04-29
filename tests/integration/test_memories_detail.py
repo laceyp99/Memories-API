@@ -66,3 +66,44 @@ def test_get_memory_by_id_not_found_returns_404(client: TestClient, data_file: P
 	assert response.status_code == 404
 	assert response.json() == {"detail": "Memory not found"}
 	assert read_database(data_file) == []
+
+
+def test_get_memory_by_id_returns_404_for_soft_deleted_memory(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
+
+	create_response = client.post(
+		"/memories",
+		json={
+			"content": "Learning FastAPI testing",
+			"tags": ["python", "api"],
+		},
+	)
+	assert create_response.status_code == 200
+
+	delete_response = client.delete("/memories/1")
+	assert delete_response.status_code == 200
+
+	response = client.get("/memories/1")
+
+	assert response.status_code == 404
+	assert response.json() == {"detail": "Memory not found"}
+	assert read_database(data_file) == [
+		expected_memory(
+			1,
+			"Learning FastAPI testing",
+			["python", "api"],
+			created_at="2026-04-06T14:12:00.000000Z",
+			updated_at="2026-04-06T14:20:00.000000Z",
+			last_accessed_at=None,
+			status="deleted",
+			version=2,
+		)
+	]
