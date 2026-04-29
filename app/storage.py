@@ -149,31 +149,28 @@ def create_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
 
 
 def _build_memory_filters(query: MemoryListQuery | None) -> tuple[str, list[object]]:
-	if query is None:
-		return "", []
-
 	clauses: list[str] = []
 	parameters: list[object] = []
 
-	if query.status is not None:
+	if query is None or query.status is None:
+		clauses.append("status != ?")
+		parameters.append("deleted")
+	else:
 		clauses.append("status = ?")
 		parameters.append(query.status)
 
-	if query.memory_type is not None:
+	if query is not None and query.memory_type is not None:
 		clauses.append("memory_type = ?")
 		parameters.append(query.memory_type)
 
-	if query.tag is not None:
+	if query is not None and query.tag is not None:
 		clauses.append("EXISTS (SELECT 1 FROM json_each(memories.tags) WHERE json_each.value = ?)")
 		parameters.append(query.tag)
 
-	if query.q is not None:
+	if query is not None and query.q is not None:
 		query_pattern = f"%{query.q.lower()}%"
 		clauses.append("(LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)")
 		parameters.extend([query_pattern, query_pattern])
-
-	if not clauses:
-		return "", parameters
 
 	return "WHERE " + " AND ".join(clauses), parameters
 

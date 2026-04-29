@@ -61,6 +61,17 @@ def test_get_memories_applies_structured_filters_with_exact_tag_matching():
 	assert [memory.id for memory in results] == [1]
 
 
+def test_get_memories_excludes_deleted_by_default_but_allows_explicit_deleted_filter():
+	create_memory(MemoryCreate(content="Visible memory", tags=["active"]))
+	create_memory(MemoryCreate(content="Hidden memory", tags=["deleted"], status="deleted"))
+
+	default_results = get_memories()
+	deleted_results = get_memories(MemoryListQuery(status="deleted"))
+
+	assert [memory.id for memory in default_results] == [1]
+	assert [memory.id for memory in deleted_results] == [2]
+
+
 def test_get_memories_page_sorts_by_created_at_with_stable_id_tiebreaker(monkeypatch):
 	timestamps = iter(
 		[
