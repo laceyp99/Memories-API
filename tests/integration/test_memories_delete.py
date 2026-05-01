@@ -12,20 +12,25 @@ def test_delete_memory_by_id_returns_deleted_memory_with_full_shape(
 ):
 	"""
 	Testing if a DELETE request to the /memories/{id} endpoint returns the
-	deleted memory with the full shape.
+	soft-deleted memory with the full shape.
 	Including:
 	- `created_at`
 	- `updated_at`
 	- `last_accessed_at`
-	fields and removes it from the database.
+	fields while keeping the row in the database.
 
 	Args:
 		client (TestClient): The TestClient for making requests to the FastAPI app.
 		data_file (Path): The Path for accessing the test database file.
 		monkeypatch: The MonkeyPatch for modifying attributes during tests.
 	"""
-	timestamp = "2026-04-06T14:12:00.000000Z"
-	monkeypatch.setattr(storage, "current_timestamp", lambda: timestamp)
+	timestamps = iter(
+		[
+			"2026-04-06T14:12:00.000000Z",
+			"2026-04-06T14:20:00.000000Z",
+		]
+	)
+	monkeypatch.setattr(storage, "current_timestamp", lambda: next(timestamps))
 
 	create_response = client.post(
 		"/memories",
@@ -42,14 +47,16 @@ def test_delete_memory_by_id_returns_deleted_memory_with_full_shape(
 		1,
 		"Learning FastAPI testing",
 		["python", "api"],
-		created_at=timestamp,
-		updated_at=timestamp,
+		created_at="2026-04-06T14:12:00.000000Z",
+		updated_at="2026-04-06T14:20:00.000000Z",
 		last_accessed_at=None,
+		status="deleted",
+		version=2,
 	)
 
 	assert response.status_code == 200
 	assert response.json() == expected
-	assert read_database(data_file) == []
+	assert read_database(data_file) == [expected]
 
 
 def test_delete_memory_by_id_not_found_returns_404(client: TestClient, data_file: Path):

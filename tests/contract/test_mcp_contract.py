@@ -76,3 +76,33 @@ def test_delete_memory_tool_raises_value_error_when_missing(monkeypatch):
 
 	with pytest.raises(ValueError, match="Memory 7 not found"):
 		delete_memory_tool(7)
+
+
+def test_delete_memory_tool_returns_soft_deleted_memory(monkeypatch):
+	deleted_memory = Memory(
+		id=7,
+		content="Unsafe note",
+		tags=["safety"],
+		created_at="2026-04-06T14:12:00.000000Z",
+		updated_at="2026-04-06T14:20:00.000000Z",
+		last_accessed_at=None,
+		memory_type="fact",
+		status="deleted",
+		version=2,
+	)
+
+	monkeypatch.setattr("app.mcp_server.delete_memory", lambda memory_id: deleted_memory)
+
+	result = delete_memory_tool(7)
+
+	assert result == {
+		"id": 7,
+		"content": "Unsafe note",
+		"tags": ["safety"],
+		"created_at": "2026-04-06T14:12:00.000000Z",
+		"updated_at": "2026-04-06T14:20:00.000000Z",
+		"last_accessed_at": None,
+		"memory_type": "fact",
+		"status": "deleted",
+		"version": 2,
+	}

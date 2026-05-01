@@ -27,8 +27,11 @@ Behavior summary:
 - `created_at`, `updated_at`, `last_accessed_at`, and `version` are server-managed.
 - `POST /memories/batch` is all-or-nothing when validation fails.
 - `updated_at` and `version` change only when a PATCH request actually changes an editable field.
+- `DELETE /memories/{id}` performs a soft delete by setting `status` to `deleted`, refreshing `updated_at`, and incrementing `version`.
 - `last_accessed_at` is refreshed on `GET /memories/{id}`.
+- Soft-deleted memories are hidden from `GET /memories/{id}`.
 - Every memory returned by retrieval is also considered accessed, so `GET /memories` and MCP `query_memories_tool` refresh `last_accessed_at` only for the returned page.
+- Retrieval excludes soft-deleted memories by default unless `status=deleted` is requested explicitly.
 
 Allowed values:
 
@@ -233,6 +236,8 @@ Delete a memory:
 curl -X DELETE http://127.0.0.1:8000/memories/1
 ```
 
+This performs a soft delete. The row remains stored with `status="deleted"` and is hidden from normal single-record access and default retrieval.
+
 Example retrieval response:
 
 ```json
@@ -268,6 +273,8 @@ The MCP server exposes the same core memory operations over stdio:
 - `query_memories_tool`
 
 `query_memories_tool` mirrors the HTTP retrieval contract and accepts `status`, `memory_type`, `tag`, `q`, `sort`, `limit`, and `offset`.
+
+`delete_memory_tool` performs the same soft delete as `DELETE /memories/{id}` and marks the memory as `deleted` rather than removing the row physically.
 
 ## CI
 

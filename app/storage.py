@@ -45,6 +45,17 @@ def _fetch_memory_row(connection, memory_id: int):
 	).fetchone()
 
 
+def _fetch_visible_memory_row(connection, memory_id: int):
+	return connection.execute(
+		"""
+		SELECT id, content, tags, created_at, updated_at, last_accessed_at, memory_type, status, version
+		FROM memories
+		WHERE id = ? AND status != 'deleted'
+		""",
+		(memory_id,),
+	).fetchone()
+
+
 def create_memory(memory: MemoryCreate) -> Memory:
 	timestamp = current_timestamp()
 	with get_connection() as connection:
@@ -138,31 +149,28 @@ def create_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
 
 
 def _build_memory_filters(query: MemoryListQuery | None) -> tuple[str, list[object]]:
-	if query is None:
-		return "", []
-
 	clauses: list[str] = []
 	parameters: list[object] = []
 
-	if query.status is not None:
+	if query is None or query.status is None:
+		clauses.append("status != ?")
+		parameters.append("deleted")
+	else:
 		clauses.append("status = ?")
 		parameters.append(query.status)
 
-	if query.memory_type is not None:
+	if query is not None and query.memory_type is not None:
 		clauses.append("memory_type = ?")
 		parameters.append(query.memory_type)
 
-	if query.tag is not None:
+	if query is not None and query.tag is not None:
 		clauses.append("EXISTS (SELECT 1 FROM json_each(memories.tags) WHERE json_each.value = ?)")
 		parameters.append(query.tag)
 
-	if query.q is not None:
+	if query is not None and query.q is not None:
 		query_pattern = f"%{query.q.lower()}%"
 		clauses.append("(LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)")
 		parameters.extend([query_pattern, query_pattern])
-
-	if not clauses:
-		return "", parameters
 
 	return "WHERE " + " AND ".join(clauses), parameters
 
@@ -239,7 +247,7 @@ def refresh_memories_last_accessed(memories: list[Memory]) -> list[Memory]:
 
 def get_memory(memory_id: int) -> Memory | None:
 	with get_connection() as connection:
-		row = _fetch_memory_row(connection, memory_id)
+		row = _fetch_visible_memory_row(connection, memory_id)
 		if row is None:
 			return None
 
@@ -257,7 +265,7 @@ def get_memory(memory_id: int) -> Memory | None:
 def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
 	update_data = memory.model_dump(exclude_unset=True)
 	with get_connection() as connection:
-		row = _fetch_memory_row(connection, memory_id)
+		row = _fetch_visible_memory_row(connection, memory_id)
 		if row is None:
 			return None
 
@@ -294,11 +302,22 @@ def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
 
 def delete_memory(memory_id: int) -> Memory | None:
 	with get_connection() as connection:
-		row = _fetch_memory_row(connection, memory_id)
+		row = _fetch_visible_memory_row(connection, memory_id)
 		if row is None:
 			return None
 
-		deleted_memory = _row_to_memory(row)
-		connection.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+		existing_memory = _row_to_memory(row)
+		updated_at = current_timestamp()
+		version = existing_memory.version + 1
+		connection.execute(
+			"""
+			UPDATE memories
+			SET status = ?, updated_at = ?, version = ?
+			WHERE id = ?
+			""",
+			("deleted", updated_at, version, memory_id),
+		)
 		connection.commit()
-		return deleted_memory
+		return existing_memory.model_copy(
+			update={"status": "deleted", "updated_at": updated_at, "version": version}
+		)

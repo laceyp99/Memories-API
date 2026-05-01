@@ -236,7 +236,7 @@ You need a way to retire or disable memories without losing record history.
 - **`archived`**: memory is kept for history but should rarely be surfaced
 - **`superseded`**: replaced by a newer memory
 - **`invalid`**: determined to be wrong or unsafe to use
-- **`deleted`**: logically removed from normal operations
+- **`deleted`**: soft-deleted by the delete operation, hidden from single-record reads, and excluded from retrieval unless `status=deleted` is requested
 
 ### Recommendation
 At minimum support `active`, `superseded`, and `invalid`. Add `archived` and `deleted` if lifecycle control matters in your system.
@@ -298,6 +298,7 @@ Both surfaces return the same envelope:
 ## Filter semantics
 
 - `status` and `memory_type` are exact structured filters.
+- Retrieval excludes `status=deleted` by default unless the caller explicitly requests `status=deleted`.
 - `tag` is exact matching against the stored tag list.
 - `q` is case-insensitive free-text matching over `content` and stored tags.
 - Filters compose with `AND`.
