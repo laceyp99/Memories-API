@@ -1,7 +1,9 @@
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
 
+from app.mcp_server import mcp
 from app.schemas import (
 	Memory,
 	MemoryCreate,
@@ -19,7 +21,14 @@ from app.storage import (
 	update_memory,
 )
 
-app = FastAPI(title="Memories API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+	async with mcp.session_manager.run():
+		yield
+
+
+app = FastAPI(title="Memories API", lifespan=lifespan)
 
 
 @app.post("/memories")
@@ -68,3 +77,6 @@ def delete_memory_by_id(memory_id: int) -> Memory:
 	if deleted_memory is None:
 		raise HTTPException(status_code=404, detail="Memory not found")
 	return deleted_memory
+
+
+app.mount("/mcp", mcp.streamable_http_app())
