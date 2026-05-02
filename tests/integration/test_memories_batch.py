@@ -43,12 +43,12 @@ def test_post_memory_batch_returns_created_memories_with_defaults(
 			{
 				"content": "Practicing SQL joins and query optimization",
 				"tags": ["database", "sql"],
-				"memory_type": "task_context",
+				"memory_type": "event",
 			},
 			{
 				"content": "Building a CLI tool with argparse",
 				"tags": ["python", "tooling"],
-				"status": "superseded",
+				"status": "invalid",
 			},
 		],
 	)
@@ -69,7 +69,7 @@ def test_post_memory_batch_returns_created_memories_with_defaults(
 			created_at="2026-04-06T14:13:00.000000Z",
 			updated_at="2026-04-06T14:13:00.000000Z",
 			last_accessed_at=None,
-			memory_type="task_context",
+			memory_type="event",
 		),
 		expected_memory(
 			3,
@@ -78,7 +78,7 @@ def test_post_memory_batch_returns_created_memories_with_defaults(
 			created_at="2026-04-06T14:14:00.000000Z",
 			updated_at="2026-04-06T14:14:00.000000Z",
 			last_accessed_at=None,
-			status="superseded",
+			status="invalid",
 		),
 	]
 

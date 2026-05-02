@@ -207,7 +207,7 @@ def test_get_memories_filters_by_status_memory_type_and_exact_tag(
 		json={
 			"content": "Learning FastAPI testing",
 			"tags": ["python", "api"],
-			"memory_type": "instruction",
+			"memory_type": "identity",
 			"status": "active",
 		},
 	)
@@ -216,17 +216,17 @@ def test_get_memories_filters_by_status_memory_type_and_exact_tag(
 		json={
 			"content": "Learning Python typing",
 			"tags": ["pythonista", "typing"],
-			"memory_type": "instruction",
+			"memory_type": "identity",
 			"status": "active",
 		},
 	)
 	client.post(
 		"/memories",
 		json={
-			"content": "Project launch is archived",
+			"content": "Project launch note marked invalid",
 			"tags": ["python", "launch"],
-			"memory_type": "task_context",
-			"status": "archived",
+			"memory_type": "event",
+			"status": "invalid",
 		},
 	)
 
@@ -234,7 +234,7 @@ def test_get_memories_filters_by_status_memory_type_and_exact_tag(
 		"/memories",
 		params={
 			"status": "active",
-			"memory_type": "instruction",
+			"memory_type": "identity",
 			"tag": "python",
 		},
 	)
@@ -247,7 +247,7 @@ def test_get_memories_filters_by_status_memory_type_and_exact_tag(
 			created_at="2026-04-06T14:12:00.000000Z",
 			updated_at="2026-04-06T14:12:00.000000Z",
 			last_accessed_at="2026-04-06T14:30:00.000000Z",
-			memory_type="instruction",
+			memory_type="identity",
 		),
 	]
 
@@ -262,17 +262,17 @@ def test_get_memories_filters_by_status_memory_type_and_exact_tag(
 			created_at="2026-04-06T14:13:00.000000Z",
 			updated_at="2026-04-06T14:13:00.000000Z",
 			last_accessed_at=None,
-			memory_type="instruction",
+			memory_type="identity",
 		),
 		expected_memory(
 			3,
-			"Project launch is archived",
+			"Project launch note marked invalid",
 			["python", "launch"],
 			created_at="2026-04-06T14:14:00.000000Z",
 			updated_at="2026-04-06T14:14:00.000000Z",
 			last_accessed_at=None,
-			memory_type="task_context",
-			status="archived",
+			memory_type="event",
+			status="invalid",
 		),
 	]
 
@@ -385,8 +385,8 @@ def test_get_memories_sorts_by_updated_at_with_stable_id_tiebreaker(
 	for content in ["First", "Second", "Third"]:
 		client.post("/memories", json={"content": content, "tags": [content.lower()]})
 
-	client.patch("/memories/1", json={"status": "archived"})
-	client.patch("/memories/2", json={"status": "archived"})
+	client.patch("/memories/1", json={"status": "invalid"})
+	client.patch("/memories/2", json={"status": "invalid"})
 
 	response = client.get("/memories", params={"sort": "updated_at"})
 

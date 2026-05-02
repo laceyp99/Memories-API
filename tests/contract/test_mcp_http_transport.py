@@ -18,12 +18,23 @@ def build_client_with_browser_config(monkeypatch, tmp_path: Path, browser_client
 	return TestClient(reloaded_main.app)
 
 
-def test_mcp_http_rejects_browser_requests_when_no_local_allowlist_exists(client: TestClient):
-	response = client.post(
-		"/mcp",
-		headers={"Origin": "http://localhost:3000"},
-		json={},
-	)
+def build_client_without_browser_config(monkeypatch, tmp_path: Path):
+	config_path = tmp_path / "missing_mcp_browser_clients.local.json"
+	monkeypatch.setattr(config_module, "MCP_BROWSER_CLIENTS_LOCAL_FILE", config_path)
+	importlib.reload(mcp_server_module)
+	reloaded_main = importlib.reload(main_module)
+	return TestClient(reloaded_main.app)
+
+
+def test_mcp_http_rejects_browser_requests_when_no_local_allowlist_exists(
+	monkeypatch, tmp_path: Path
+):
+	with build_client_without_browser_config(monkeypatch, tmp_path) as client:
+		response = client.post(
+			"/mcp",
+			headers={"Origin": "http://localhost:3000"},
+			json={},
+		)
 
 	assert response.status_code == 403
 	assert response.json() == {"detail": "Origin not allowed"}

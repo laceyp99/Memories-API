@@ -1,6 +1,6 @@
 # Memory Data Object Schema
 
-This document describes the memory object used by this project and the retrieval model built around it. The goal is to keep the schema lean while still supporting safe updates, deterministic retrieval, and future ranking strategies.
+This document describes the memory object used by this project and the retrieval model built around it. The aim is to keep the schema lean while still supporting safe updates, deterministic retrieval, and future ranking strategies.
 
 ## Table of Contents
 
@@ -193,10 +193,7 @@ A categorical label describing what kind of memory this is.
 ### Suggested values
 - `preference`
 - `fact`
-- `goal`
 - `identity`
-- `instruction`
-- `task_context`
 - `event`
 
 ### Why it matters
@@ -205,14 +202,8 @@ Different memory types should be ranked and retained differently.
 ### Why choose one type over another
 - **`preference`**: use for stable likes, dislikes, or style choices
 - **`fact`**: use for concrete statements that may be true independently of the current task
-- **`goal`**: use when the memory reflects a desired future outcome
 - **`identity`**: use for durable user or agent profile details
-- **`instruction`**: use for standing guidance on behavior
-- **`task_context`**: use for project or work-in-progress details
 - **`event`**: use for time-linked things that happened or will happen
-
-### Recommendation
-Start with 5 to 7 enum values max. Add more only when retrieval or policy behavior clearly needs them.
 
 ---
 
@@ -223,8 +214,6 @@ The current lifecycle state of the memory.
 
 ### Suggested values
 - `active`
-- `archived`
-- `superseded`
 - `invalid`
 - `deleted`
 
@@ -233,13 +222,11 @@ You need a way to retire or disable memories without losing record history.
 
 ### Why choose one status over another
 - **`active`**: memory is available for normal retrieval
-- **`archived`**: memory is kept for history but should rarely be surfaced
-- **`superseded`**: replaced by a newer memory
 - **`invalid`**: determined to be wrong or unsafe to use
 - **`deleted`**: soft-deleted by the delete operation, hidden from single-record reads, and excluded from retrieval unless `status=deleted` is requested
 
 ### Recommendation
-At minimum support `active`, `superseded`, and `invalid`. Add `archived` and `deleted` if lifecycle control matters in your system.
+At minimum support `active`, `invalid`, and `deleted`.
 
 ---
 

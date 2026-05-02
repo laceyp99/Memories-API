@@ -5,13 +5,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 ALLOWED_MEMORY_TYPES = {
 	"preference",
 	"fact",
-	"goal",
 	"identity",
-	"instruction",
-	"task_context",
 	"event",
 }
-ALLOWED_STATUSES = {"active", "archived", "superseded", "invalid", "deleted"}
+ALLOWED_STATUSES = {"active", "invalid", "deleted"}
 DEFAULT_PAGE_LIMIT = 10
 MAX_PAGE_LIMIT = 100
 ALLOWED_MEMORY_SORTS = {"id", "created_at", "updated_at", "last_accessed_at"}

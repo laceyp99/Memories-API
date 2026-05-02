@@ -41,8 +41,8 @@ def test_patch_memory_by_id_updates_fields_and_increments_version(
 		json={
 			"content": "Practicing SQL joins and query optimization",
 			"tags": ["database", "sql"],
-			"memory_type": "task_context",
-			"status": "archived",
+			"memory_type": "event",
+			"status": "invalid",
 		},
 	)
 
@@ -53,8 +53,8 @@ def test_patch_memory_by_id_updates_fields_and_increments_version(
 		created_at="2026-04-06T14:12:00.000000Z",
 		updated_at="2026-04-06T14:25:00.000000Z",
 		last_accessed_at=None,
-		memory_type="task_context",
-		status="archived",
+		memory_type="event",
+		status="invalid",
 		version=2,
 	)
 
@@ -88,7 +88,7 @@ def test_patch_memory_by_id_partial_data_preserves_untouched_fields(
 		json={
 			"content": "Learning FastAPI testing",
 			"tags": ["python", "api"],
-			"memory_type": "instruction",
+			"memory_type": "identity",
 			"status": "active",
 		},
 	)
@@ -103,7 +103,7 @@ def test_patch_memory_by_id_partial_data_preserves_untouched_fields(
 		created_at="2026-04-06T14:12:00.000000Z",
 		updated_at="2026-04-06T14:30:00.000000Z",
 		last_accessed_at=None,
-		memory_type="instruction",
+		memory_type="identity",
 		status="active",
 		version=2,
 	)

@@ -70,7 +70,7 @@ def test_post_memory_accepts_optional_memory_type_and_status(
 			"content": "User prefers concise responses",
 			"tags": ["preference", "writing-style"],
 			"memory_type": "preference",
-			"status": "archived",
+			"status": "invalid",
 		},
 	)
 
@@ -82,7 +82,7 @@ def test_post_memory_accepts_optional_memory_type_and_status(
 		updated_at=timestamp,
 		last_accessed_at=None,
 		memory_type="preference",
-		status="archived",
+		status="invalid",
 	)
 
 	assert response.status_code == 200

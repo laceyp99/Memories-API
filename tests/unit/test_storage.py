@@ -21,7 +21,7 @@ def test_get_memories_applies_free_text_filter_case_insensitively():
 		MemoryCreate(
 			content="Database query notes",
 			tags=["SQL"],
-			memory_type="task_context",
+			memory_type="event",
 		)
 	)
 
@@ -35,28 +35,26 @@ def test_get_memories_applies_structured_filters_with_exact_tag_matching():
 		MemoryCreate(
 			content="Learning FastAPI testing",
 			tags=["python", "api"],
-			memory_type="instruction",
+			memory_type="identity",
 		)
 	)
 	create_memory(
 		MemoryCreate(
 			content="Learning Python typing",
 			tags=["pythonista", "typing"],
-			memory_type="instruction",
+			memory_type="identity",
 		)
 	)
 	create_memory(
 		MemoryCreate(
-			content="Archived launch notes",
+			content="Launch notes marked invalid",
 			tags=["python", "launch"],
-			memory_type="task_context",
-			status="archived",
+			memory_type="event",
+			status="invalid",
 		)
 	)
 
-	results = get_memories(
-		MemoryListQuery(status="active", memory_type="instruction", tag="python")
-	)
+	results = get_memories(MemoryListQuery(status="active", memory_type="identity", tag="python"))
 
 	assert [memory.id for memory in results] == [1]
 
@@ -106,8 +104,8 @@ def test_get_memories_page_sorts_by_last_accessed_at_and_counts_full_result(monk
 	for content in ["First", "Second", "Third"]:
 		create_memory(MemoryCreate(content=content, tags=[content.lower()]))
 
-	assert update_memory(1, MemoryUpdate(status="archived")) is not None
-	assert update_memory(2, MemoryUpdate(status="archived")) is not None
+	assert update_memory(1, MemoryUpdate(status="invalid")) is not None
+	assert update_memory(2, MemoryUpdate(status="invalid")) is not None
 
 	items, total = get_memories_page(MemoryListQuery(sort="updated_at", limit=2, offset=0))
 
@@ -137,9 +135,9 @@ def test_update_memory_persists_changes(monkeypatch):
 	create_memory(MemoryCreate(content="Learning FastAPI testing", tags=["python", "api"]))
 	monkeypatch.setattr("app.storage.current_timestamp", lambda: "2026-04-06T14:30:00.000000Z")
 
-	result = update_memory(1, MemoryUpdate(status="archived"))
+	result = update_memory(1, MemoryUpdate(status="invalid"))
 
 	assert result is not None
-	assert result.status == "archived"
+	assert result.status == "invalid"
 	assert result.updated_at == "2026-04-06T14:30:00.000000Z"
 	assert result.version == 2

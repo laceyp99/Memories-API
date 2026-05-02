@@ -32,10 +32,10 @@ def test_validate_tags_value_rejects_blank_tag():
 
 
 def test_memory_update_allows_partial_payload():
-	memory = MemoryUpdate(status="archived")
+	memory = MemoryUpdate(status="invalid")
 
 	assert memory.content is None
-	assert memory.status == "archived"
+	assert memory.status == "invalid"
 
 
 def test_memory_update_rejects_extra_fields():
@@ -78,13 +78,13 @@ def test_memory_list_query_rejects_invalid_limit_and_offset():
 def test_memory_list_query_validates_status_memory_type_and_text_filters():
 	query = MemoryListQuery(
 		status="active",
-		memory_type="instruction",
+		memory_type="identity",
 		tag="python",
 		q="fastapi",
 	)
 
 	assert query.status == "active"
-	assert query.memory_type == "instruction"
+	assert query.memory_type == "identity"
 	assert query.tag == "python"
 	assert query.q == "fastapi"
 
