@@ -35,8 +35,8 @@ Behavior summary:
 
 Allowed values:
 
-- `memory_type`: `preference`, `fact`, `goal`, `identity`, `instruction`, `task_context`, `event`
-- `status`: `active`, `archived`, `superseded`, `invalid`, `deleted`
+- `memory_type`: `preference`, `fact`, `identity`, `event`
+- `status`: `active`, `invalid`, `deleted`
 
 ## Unified retrieval model
 
@@ -81,29 +81,6 @@ This project intentionally separates deterministic retrieval from semantic ranki
 - Today, retrieval is deterministic: exact filters, case-insensitive substring matching for `q`, explicit sort keys, and stable pagination.
 - Deterministic sorting makes the contract easy to test, reason about, and reuse from both HTTP and MCP.
 - The current `q` behavior is not semantic search. It is a lightweight lexical filter over `content` and tags.
-
-## Project layout
-
-```text
-app/
-	__init__.py
-	config.py
-	main.py
-	mcp_server.py
-	schemas.py
-	storage.py
-tests/
-	conftest.py
-	contract/
-	helpers/
-	integration/
-	unit/
-.github/workflows/ci.yml
-data.db
-docs/
-	data_object_schema.md
-pyproject.toml
-```
 
 ## Security Model
 
@@ -228,22 +205,6 @@ mcp dev app/mcp_server.py
 
 Interactive MCP Inspector available at `http://localhost:6274`.
 
-### Run tests
-
-```powershell
-pytest # The entire test suite
-
-pytest tests/unit # only the unit tests
-pytest tests/contract # only the contract tests
-pytest tests/integration # only the integration tests
-```
-
-### Format and lint
-
-```powershell
-ruff format .
-ruff check .
-```
 
 ## Example requests
 
@@ -252,7 +213,7 @@ Create a memory:
 ```bash
 curl -X POST http://127.0.0.1:8000/memories \
 	-H "Content-Type: application/json" \
-	-d '{"content":"Learning FastAPI testing","tags":["python","api"],"memory_type":"task_context"}'
+	-d '{"content":"Learning FastAPI testing","tags":["python","api"],"memory_type":"identity"}'
 ```
 
 Create multiple memories:
@@ -275,7 +236,7 @@ curl http://127.0.0.1:8000/memories
 Query memories with filters, free-text matching, sort, and pagination:
 
 ```bash
-curl "http://127.0.0.1:8000/memories?status=active&memory_type=instruction&tag=python&q=testing&sort=updated_at&limit=5&offset=0"
+curl "http://127.0.0.1:8000/memories?status=active&memory_type=preference&tag=python&q=testing&sort=updated_at&limit=5&offset=0"
 ```
 
 Get one memory by id:
@@ -289,7 +250,7 @@ Update a memory:
 ```bash
 curl -X PATCH http://127.0.0.1:8000/memories/1 \
 	-H "Content-Type: application/json" \
-	-d '{"content":"Practicing FastAPI testing","status":"archived"}'
+	-d '{"content":"Practicing FastAPI testing","status":"invalid"}'
 ```
 
 Delete a memory:
@@ -312,7 +273,7 @@ Example retrieval response:
 			"created_at": "2026-04-06T14:12:00.000000Z",
 			"updated_at": "2026-04-06T14:12:00.000000Z",
 			"last_accessed_at": "2026-04-06T14:20:00.000000Z",
-			"memory_type": "instruction",
+			"memory_type": "event",
 			"status": "active",
 			"version": 1
 		}
