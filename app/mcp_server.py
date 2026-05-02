@@ -10,7 +10,12 @@ from app.storage import (
 	update_memory,
 )
 
-mcp = FastMCP("memories-api")
+mcp = FastMCP(
+	"memories-api",
+	stateless_http=True,
+	json_response=True,
+	streamable_http_path="/",
+)
 
 
 def serialize_memory(memory) -> dict:
@@ -119,9 +124,13 @@ def read_memory(memory_id: int) -> dict:
 	return serialize_memory(memory)
 
 
-def run() -> None:
+def run_stdio() -> None:
 	mcp.run()
 
 
+def run() -> None:
+	run_stdio()
+
+
 if __name__ == "__main__":
-	run()
+	run_stdio()

@@ -110,8 +110,9 @@ pyproject.toml
 This project is intended for single-user, local-only use on a trusted machine.
 
 - The HTTP API and MCP server do not implement application-level authentication or authorization.
-- The MCP server is intended to be used locally over stdio by a local MCP client.
-- The HTTP API should only be bound to localhost for local development.
+- The HTTP API and MCP streamable HTTP endpoint should only be bound to localhost for local development.
+- Browser-based MCP access is denied by default unless you create a local browser client allowlist file.
+- Browser origins are matched exactly. A configured origin of `http://localhost:3000` does not also allow `http://127.0.0.1:3000`.
 - Do not expose this service to the internet, a LAN, a shared VM, or any untrusted environment.
 - Do not run it behind a reverse proxy or with host binding such as `0.0.0.0` unless you add proper authentication, authorization, and transport security.
 - Treat the SQLite database file and local MCP/client configuration as sensitive local data.
@@ -130,18 +131,63 @@ pip install .
 ### Run the API
 
 ```powershell
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Interactive docs are available at `http://localhost:8000/docs`.
+Interactive docs are available at `http://127.0.0.1:8000/docs`.
+
+This single app serves both surfaces:
+
+- REST API at `http://127.0.0.1:8000/memories`
+- MCP streamable HTTP endpoint at `http://127.0.0.1:8000/mcp`
+
+### Configure browser-based MCP clients
+
+The repo includes a committed example file:
+
+- `mcp_browser_clients.example.json`
+
+Create your real local override file in the repo root:
+
+- `mcp_browser_clients.local.json`
+
+That local override file is gitignored and is the only file read by the app for browser-origin allowlisting.
+
+If `mcp_browser_clients.local.json` does not exist, browser-based MCP access is denied by default, but the REST API and stdio MCP server still work.
+
+Example local file for Open WebUI running in the browser at `http://localhost:3000`:
+
+```json
+{
+	"browser_clients": [
+		{
+			"name": "open-webui-local",
+			"origin": "http://localhost:3000"
+		}
+	]
+}
+```
+
+If the local file exists but is invalid, the app logs a warning and denies browser-based MCP access instead of failing startup.
+
+### Open WebUI note
+
+For a local Open WebUI setup, two values matter:
+
+- Browser origin: usually `http://localhost:3000`. This is what goes into `mcp_browser_clients.local.json`.
+- MCP server URL: if Open WebUI runs in Docker, it may need `http://host.docker.internal:8000/mcp` instead of `http://localhost:8000/mcp` to reach the host machine.
 
 ### Use as an MCP Server
 
-This project can also run as a local MCP server over stdio.
+This project supports both MCP transports during local development:
 
-### MCP-Compatible Clients
+- Streamable HTTP through the mounted `/mcp` endpoint on the main FastAPI app
+- Stdio through the dedicated MCP entrypoint
+
+### Stdio MCP clients
 
 Add to your claude_desktop_config.json or mcp-config.json file:
+
 ```
 {
   "mcpServers": {
@@ -156,6 +202,22 @@ Add to your claude_desktop_config.json or mcp-config.json file:
   }
 }
 ```
+
+### Streamable HTTP MCP clients
+
+Point the client at:
+
+```text
+http://127.0.0.1:8000/mcp
+```
+
+If the client application runs in Docker on the same machine, use the host-reachable URL that the container can resolve, for example:
+
+```text
+http://host.docker.internal:8000/mcp
+```
+
+Browser-based clients still need an exact allowed origin in `mcp_browser_clients.local.json`.
 
 ### Manual Start
 
@@ -264,7 +326,7 @@ Example retrieval response:
 
 ## MCP tools
 
-The MCP server exposes the same core memory operations over stdio:
+The MCP server exposes the same core memory operations over stdio and streamable HTTP:
 
 - `create_memory_tool`
 - `update_memory_tool`

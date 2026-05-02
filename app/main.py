@@ -1,7 +1,14 @@
+import logging
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
 
+from app.config import load_browser_client_config
+from app.mcp_server import mcp
 from app.schemas import (
 	Memory,
 	MemoryCreate,
@@ -19,7 +26,42 @@ from app.storage import (
 	update_memory,
 )
 
-app = FastAPI(title="Memories API")
+logger = logging.getLogger(__name__)
+browser_client_config = load_browser_client_config()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+	for warning_message in browser_client_config.warnings:
+		logger.warning(warning_message)
+
+	async with mcp.session_manager.run():
+		yield
+
+
+app = FastAPI(title="Memories API", lifespan=lifespan)
+app.add_middleware(
+	CORSMiddleware,
+	allow_origins=browser_client_config.allowed_origins,
+	allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+	allow_headers=[
+		"Content-Type",
+		"Accept",
+		"MCP-Protocol-Version",
+		"Mcp-Session-Id",
+	],
+	expose_headers=["Mcp-Session-Id"],
+)
+
+
+@app.middleware("http")
+async def validate_mcp_browser_origin(request: Request, call_next):
+	origin = request.headers.get("origin")
+	if request.url.path.startswith("/mcp") and origin is not None:
+		if origin not in browser_client_config.allowed_origins:
+			return JSONResponse(status_code=403, content={"detail": "Origin not allowed"})
+
+	return await call_next(request)
 
 
 @app.post("/memories")
@@ -68,3 +110,6 @@ def delete_memory_by_id(memory_id: int) -> Memory:
 	if deleted_memory is None:
 		raise HTTPException(status_code=404, detail="Memory not found")
 	return deleted_memory
+
+
+app.mount("/mcp", mcp.streamable_http_app())

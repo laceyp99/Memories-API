@@ -9,3 +9,4 @@ __pycache__/
 *.egg-info/
 data.db
 uv.lock
+mcp_browser_clients.local.json
