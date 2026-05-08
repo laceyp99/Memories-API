@@ -1,12 +1,27 @@
+# Python
 __pycache__/
 .pytest_cache/
 */__pycache__/
 *.pyc
 .venv/
-.env
 .coverage
 .ruff_cache/
 *.egg-info/
-data.db
 uv.lock
+
+# Local secrets
+.env
+.env.*
 mcp_browser_clients.local.json
+
+# SQLite artifacts
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+data.db

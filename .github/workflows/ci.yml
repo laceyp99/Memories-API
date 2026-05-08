@@ -5,7 +5,29 @@ on:
   pull_request:
 
 jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Fail on tracked local artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          forbidden='(^|/)(.*\.db|.*\.sqlite|.*\.sqlite3|.*-journal|.*-wal|.*-shm|\.env(\..*)?|mcp_browser_clients\.local\.json)$'
+          matches="$(git ls-files | grep -E "$forbidden" || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Forbidden tracked files detected:"
+            echo "$matches"
+            exit 1
+          fi
+
   test:
+    needs: guardrails
     runs-on: ubuntu-latest
 
     steps:
