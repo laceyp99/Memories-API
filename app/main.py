@@ -43,7 +43,7 @@ app = FastAPI(title="Memories API", lifespan=lifespan)
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=browser_client_config.allowed_origins,
-	allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+	allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
 	allow_headers=[
 		"Content-Type",
 		"Accept",
