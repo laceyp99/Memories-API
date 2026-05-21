@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.prompts.base import AssistantMessage
 
 from app.schemas import MemoryCreate, MemoryListQuery, MemoryListResponse, MemoryUpdate
 from app.storage import (
@@ -17,9 +20,55 @@ mcp = FastMCP(
 	streamable_http_path="/",
 )
 
+SKILL_DIR = Path(__file__).resolve().parent.parent / ".github" / "skills" / "memories"
+REFERENCES_DIR = SKILL_DIR / "references"
+ASSETS_DIR = SKILL_DIR / "assets"
+
+
+def load_skill_reference(name: str) -> str:
+	return (REFERENCES_DIR / name).read_text(encoding="utf-8").strip()
+
+
+def load_skill_asset(name: str) -> str:
+	return (ASSETS_DIR / name).read_text(encoding="utf-8").strip()
+
+
+def build_memories_tool_behavior_resource() -> str:
+	sections = [
+		load_skill_reference("memories-tool-behavior-policy.md"),
+		load_skill_reference("memories-query-recipes.md"),
+	]
+	return "\n\n".join(sections)
+
+
+def build_use_memories_api_prompt_messages() -> list[AssistantMessage]:
+	return [
+		AssistantMessage(load_skill_asset("use-memories-api-assistant.md")),
+	]
+
 
 def serialize_memory(memory) -> dict:
 	return memory.model_dump()
+
+
+@mcp.resource(
+	"memories://policy/tool-behavior",
+	name="memories-tool-behavior-policy",
+	description="Reference policy for using the memories API tools safely and consistently for recall, writes, and contradiction handling.",
+	mime_type="text/markdown",
+)
+def memories_tool_behavior_resource() -> str:
+	"""Return the tool-behavior policy and query recipes for the memories API."""
+	return build_memories_tool_behavior_resource()
+
+
+@mcp.prompt(
+	name="use_memories_api",
+	description="Prepare an agent to use the memories API MCP tools for personalization, durable recall, careful writes, and contradiction handling.",
+)
+def use_memories_api_prompt() -> list[AssistantMessage]:
+	"""Return a static prompt for deliberate memories-api tool usage."""
+	return build_use_memories_api_prompt_messages()
 
 
 @mcp.tool(
