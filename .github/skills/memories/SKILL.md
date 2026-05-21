@@ -27,6 +27,19 @@ Use this skill when an agent is deciding how to interact with the memories API o
 7. If a contradiction appears, ask the user which version should remain authoritative before updating or invalidating.
 8. Do not delete memories automatically.
 
+## Autonomy
+
+- Default autonomy level: `autonomous`.
+- Autonomy levels and allowed actions:
+	- `manual` — Agent may suggest recall and writes but must request explicit human confirmation before performing any create, update, or delete operations. Reads are allowed for context but agents should minimize broad queries.
+	- `suggest` — Agent may perform reads and propose writes; it may perform non-destructive updates to clearly matching preference records when the match is unambiguous, but should request confirmation for new creates and deletions.
+	- `autonomous` — Agent may perform reads, create, update, and soft-delete (`status='deleted'`) operations without an additional human approval step, provided it follows the behavior policy (sensitive-data confirmation, deduping flow, concise atomic writes, and transparency reporting).
+
+- Soft-delete behavior: deletions performed by agents set memory `status` to `deleted` (soft-delete) so items remain auditable and may be inspected or restored by humans or repair workflows.
+
+- Transparency: agents operating under any autonomy level must follow the assistant guidance in `assets/use-memories-api-assistant.md` which requires a short `Memory actions:` summary appended to replies whenever memory tools are used.
+
+
 ## References
 
 - [Tool behavior policy](./references/memories-tool-behavior-policy.md)
