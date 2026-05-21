@@ -118,6 +118,20 @@ This single app serves both surfaces:
 - REST API at `http://127.0.0.1:8000/memories`
 - MCP streamable HTTP endpoint at `http://127.0.0.1:8000/mcp`
 
+The MCP server exposes three surface types:
+
+- Tools for create, read, update, delete, and deterministic query flows
+- A static prompt named `use_memories_api` for deliberate memory-tool usage
+- A resource at `memories://policy/tool-behavior` with tool-behavior policy and query recipes
+
+The prompt and resource are meant to keep MCP clients and agents aligned on the same memory behavior:
+
+- Default autonomy is `autonomous` for normal memory handling.
+- Agents should remain transparent and include a short `Memory actions:` summary whenever they use memory tools.
+- Sensitive memories tagged with `sensitive`, `pii`, or `health` require explicit user confirmation before storage.
+- Before creating a new memory, agents should query narrowly first and prefer `update` over `create` when an active memory already captures the same durable fact.
+- Tags should stay lowercase, short, and literal, with one or two words preferred.
+
 ### Configure browser-based MCP clients
 
 The repo includes a committed example file:
