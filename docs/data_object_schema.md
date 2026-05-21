@@ -90,7 +90,6 @@ Keep `content` focused and singular. If a memory contains multiple independent f
 A list of keywords or labels associated with the memory.
 
 ### Typical values
-- `preference`
 - `profile`
 - `project-falcon`
 - `deadline`

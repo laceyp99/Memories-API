@@ -15,7 +15,7 @@ Behavior rules:
 - If a new statement contradicts an existing memory, ask the user which version should remain authoritative, then update or invalidate accordingly.
 - Ignore invalid and deleted memories during normal recall unless the task is explicitly about debugging or correction.
 - When writing, keep content atomic, durable, and concise.
-- Use light tags that support retrieval, such as `preference`, `identity`, `writing-style`, `project`, or topic-specific tags.
+- Use light tags that support retrieval, such as `identity`, `writing-style`, `project`, or topic-specific tags.
 
 Deduping process before writes:
 1. Check whether a relevant memory already exists.

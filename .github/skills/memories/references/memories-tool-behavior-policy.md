@@ -56,9 +56,33 @@ Avoid storing:
 - speculative interpretations
 - sensitive data unless the user explicitly confirms storage
 
+### Sensitive Data
+
+Treat `sensitive`, `pii`, and `health` as sensitive tags.
+
+Before storing any memory that contains or should be tagged with sensitive data:
+
+1. Ask the user for explicit confirmation.
+2. Confirm the user wants the information persisted in the memories store.
+3. Keep the stored memory atomic and minimal.
+4. Use the sensitive tag alongside any other narrow retrieval tags only when confirmed.
+
+If the user does not clearly confirm storage, do not create or update the memory.
+
 ## Deduping and Updates
 
-When a new fact clearly matches an existing durable memory, prefer `update_memory_tool` over `create_memory_tool`.
+Use a check-before-write flow to avoid duplicates.
+
+Recommended flow:
+
+1. Check whether a relevant active memory already exists.
+2. Query narrowly using structured filters first, especially `memory_type`, `status`, and `tag`.
+3. Compare the candidate against existing active memories for the same durable fact or preference.
+4. If the match is clear, update the existing memory instead of creating a duplicate.
+5. If the information is materially distinct, create a new memory.
+6. If overlap or contradiction is uncertain, ask the user before writing.
+
+When the match is clear, prefer `update_memory_tool` over `create_memory_tool`.
 Create a new memory only when the new information is materially distinct.
 
 ## Contradictions
@@ -78,10 +102,15 @@ Use light conventions that help retrieval.
 
 Recommended tags include:
 
-- `preference`
-- `identity`
 - `writing-style`
 - `project`
-- a domain or topic tag relevant to the content
+- `identity`
+- `workflow`
+- `project-<name>` when the tag stays short and literal
+- `sensitive`
+- `pii`
+- `health`
 
-Keep tags short, literal, and reusable.
+Keep tags lowercase, short, literal, and reusable.
+Prefer one or two words per tag.
+Use tags to describe retrieval concepts, not schema fields or memory_type values.
