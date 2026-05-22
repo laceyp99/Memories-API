@@ -53,6 +53,8 @@ The workspace skill is the maintainer-facing guide. It explains when the memory 
 
 This is the best entry point when editing or reviewing the memory system in the repository because it groups the operational guidance with the supporting assets.
 
+The skill should stay thin. Its main job is routing: tell maintainers or agents which surface to load next, instead of duplicating the full policy or recipe text.
+
 ## Skill file map
 
 ### Core guidance
@@ -68,18 +70,18 @@ This is the best entry point when editing or reviewing the memory system in the 
 
 - [assets/use-memories-api-assistant.md](../.github/skills/memories/assets/use-memories-api-assistant.md)
 
-### Tool schemas
-
-- [assets/anthropic_tools.json](../.github/skills/memories/assets/anthropic_tools.json)
-- [assets/openai_functions.json](../.github/skills/memories/assets/openai_functions.json)
-
 ### Helper scripts
 
-- [scripts/preview_memories_skill.py](../.github/skills/memories/scripts/preview_memories_skill.py)
-- [scripts/curl_query_memories.sh](../.github/skills/memories/scripts/curl_query_memories.sh)
-- [scripts/curl_create_memory.sh](../.github/skills/memories/scripts/curl_create_memory.sh)
-- [scripts/curl_update_memory.sh](../.github/skills/memories/scripts/curl_update_memory.sh)
-- [scripts/curl_delete_memory.sh](../.github/skills/memories/scripts/curl_delete_memory.sh)
+- [scripts/validate_memories_skill.py](../.github/skills/memories/scripts/validate_memories_skill.py)
+- [scripts/curl_examples.md](../.github/skills/memories/scripts/curl_examples.md)
+
+The validation script is the maintainer-facing executable check for prompt and resource wiring. It verifies that the required skill files exist, that the MCP prompt and resource builders still load, and that the expected MCP surfaces remain registered.
+
+The validation script is most useful as a quick smoke test after editing [app/mcp_server.py](../app/mcp_server.py), the prompt asset, or the policy references, because it exercises the actual tool workflow against a temporary database instead of only reprinting documentation.
+
+The curl examples file is the better home for manual HTTP examples because it is easy to skim, easy to copy from, and does not pretend to be executable automation.
+
+As a rule, the scripts directory should contain runnable checks or maintenance helpers that are useful after editing the memory workflow. Static examples and explanatory material belong in markdown files instead.
 
 ## Notes on current alignment
 

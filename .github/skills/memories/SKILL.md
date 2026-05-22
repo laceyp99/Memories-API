@@ -48,14 +48,15 @@ Use this skill when an agent is deciding how to interact with the memories API o
 ## Assets
 
 - [Static MCP prompt assistant message](./assets/use-memories-api-assistant.md)
-- [Anthropic Tools Schema JSON](./assets/anthropic_tools.json)
-- [OpenAI Functions JSON](./assets/openai_functions.json)
 
 ## Scripts
 
-- [Preview skill assets script](./scripts/preview_memories_skill.py)
-- [Query memories curl script](./scripts/curl_query_memories.sh)
-- [Create memory curl script](./scripts/curl_create_memory.sh)
-- [Update memory curl script](./scripts/curl_update_memory.sh)
-- [Delete memory curl script](./scripts/curl_delete_memory.sh)
-- [Read memory curl script](./scripts/curl_read_memory.sh)
+- [Validation script](./scripts/validate_memories_skill.py)
+- [Curl examples](./scripts/curl_examples.md)
+
+Keep this directory focused on runnable helpers that an agent can execute after editing the skill, prompt, MCP wiring, or related server behavior.
+
+- `validate_memories_skill.py` is the quick in-process smoke check. It exercises prompt/resource registration and a create-query-read-update-delete workflow against a temporary database.
+- `curl_examples.md` is the manual HTTP reference for copy-paste debugging and documentation work.
+
+Use markdown for examples and explanation. Use scripts only for executable checks or maintenance helpers that actually reduce agent work.
