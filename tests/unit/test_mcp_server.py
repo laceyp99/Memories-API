@@ -10,8 +10,9 @@ from app.mcp_server import (
 	query_memories_tool,
 	read_memory,
 	serialize_memory,
+	update_memory_tool,
 )
-from app.schemas import Memory
+from app.schemas import Memory, MemoryUpdate
 
 
 def test_serialize_memory_returns_model_dump():
@@ -91,6 +92,34 @@ def test_query_memories_tool_uses_default_query_values(monkeypatch):
 		"offset": 0,
 		"has_more": False,
 	}
+
+
+def test_update_memory_tool_omits_unset_optional_fields(monkeypatch):
+	seen = {}
+
+	def fake_update_memory(memory_id, memory):
+		seen["memory_id"] = memory_id
+		seen["memory"] = memory
+		return Memory(
+			id=memory_id,
+			content=memory.content or "Remember this",
+			tags=["note"],
+			created_at="2026-04-06T14:12:00.000000Z",
+			updated_at="2026-04-06T14:13:00.000000Z",
+			last_accessed_at=None,
+			memory_type="fact",
+			status="active",
+			version=2,
+		)
+
+	monkeypatch.setattr("app.mcp_server.update_memory", fake_update_memory)
+
+	result = update_memory_tool(7, content="Updated memory content")
+
+	assert seen["memory_id"] == 7
+	assert isinstance(seen["memory"], MemoryUpdate)
+	assert seen["memory"].model_dump(exclude_unset=True) == {"content": "Updated memory content"}
+	assert result["content"] == "Updated memory content"
 
 
 def test_build_memories_tool_behavior_resource_includes_policy_and_recipes():

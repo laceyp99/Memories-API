@@ -103,14 +103,15 @@ def update_memory_tool(
 	status: str | None = None,
 ) -> dict:
 	"""Update editable fields on an existing memory."""
+	update_fields = {
+		"content": content,
+		"tags": tags,
+		"memory_type": memory_type,
+		"status": status,
+	}
 	memory = update_memory(
 		memory_id,
-		MemoryUpdate(
-			content=content,
-			tags=tags,
-			memory_type=memory_type,
-			status=status,
-		),
+		MemoryUpdate(**{key: value for key, value in update_fields.items() if value is not None}),
 	)
 	if memory is None:
 		raise ValueError(f"Memory {memory_id} not found")
