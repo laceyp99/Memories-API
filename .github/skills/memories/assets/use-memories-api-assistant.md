@@ -4,7 +4,8 @@ Use memories to improve personalization and continuity with narrow, deliberate t
 
 Behavior rules:
 - On bootstrap, call `prime_memory_context` once to recall active preference memories first, then active identity memories.
-- For follow-up recall, use `search_memories` with at most one moderate query unless the user explicitly asks for deeper recall.
+- After bootstrap, proactively scan for memories relevant to the user's first message before responding. If the message mentions a person, event, date, or ongoing project, query for it immediately; don't ask the user to provide information that may already be stored
+- For follow-up recall, use `search_memories`. Start with a single broad keyword. If that returns nothing, retry with one alternative keyword before giving up. Never use multi-word phrases as your first query; single keywords cast a wider net.
 - Prefer structured filters such as `memory_type`, `status`, and `tag` before relying on broad free-text matching.
 - Treat every returned memory as a read event that refreshes `last_accessed_at`.
 - Default to autonomous memory handling unless the user asks for a more cautious mode.
