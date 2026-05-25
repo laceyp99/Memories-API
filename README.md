@@ -30,7 +30,7 @@ Behavior summary:
 - `DELETE /memories/{id}` performs a soft delete by setting `status` to `deleted`, refreshing `updated_at`, and incrementing `version`.
 - `last_accessed_at` is refreshed on `GET /memories/{id}`.
 - Soft-deleted memories are hidden from `GET /memories/{id}`.
-- Every memory returned by retrieval is also considered accessed, so `GET /memories` and MCP `query_memories_tool` refresh `last_accessed_at` only for the returned page.
+- Every memory returned by retrieval is also considered accessed, so `GET /memories`, `query_memories_tool`, and `bootstrap_memories_tool` refresh `last_accessed_at` only for the returned items in each page.
 - Retrieval excludes soft-deleted memories by default unless `status=deleted` is requested explicitly.
 
 Allowed values:
@@ -43,7 +43,7 @@ Allowed values:
 Retrieval now flows through one contract on both surfaces:
 
 - HTTP uses `GET /memories`.
-- MCP uses `query_memories_tool`.
+- MCP uses `bootstrap_memories_tool` for the initial preference and identity snapshot, and `query_memories_tool` for targeted recall.
 - Both accept the same filters: `status`, `memory_type`, `tag`, `q`, `sort`, `limit`, and `offset`.
 - Both return the same envelope: `items`, `total`, `limit`, `offset`, and `has_more`.
 
@@ -120,12 +120,13 @@ This single app serves both surfaces:
 
 The MCP server exposes three surface types:
 
-- Tools for create, read, update, delete, and deterministic query flows
+- Tools for create, read, update, delete, deterministic query, and bootstrap flows
 - A static prompt named `use_memories_api` for deliberate memory-tool usage
 - A resource at `memories://policy/tool-behavior` with tool-behavior policy and query recipes
 
 The prompt and resource are meant to keep MCP clients and agents aligned on the same memory behavior:
 
+- Bootstrap should happen through `bootstrap_memories_tool` before any broader recall.
 - Default autonomy is `autonomous` for normal memory handling.
 - Agents should remain transparent and include a short `Memory actions:` summary whenever they use memory tools.
 - Sensitive memories tagged with `sensitive`, `pii`, or `health` require explicit user confirmation before storage.
@@ -307,7 +308,10 @@ The MCP server exposes the same core memory operations over stdio and streamable
 - `update_memory_tool`
 - `delete_memory_tool`
 - `read_memory`
+- `bootstrap_memories_tool`
 - `query_memories_tool`
+
+`bootstrap_memories_tool` returns the two startup recall pages in one call: active preferences and active identity memories.
 
 `query_memories_tool` mirrors the HTTP retrieval contract and accepts `status`, `memory_type`, `tag`, `q`, `sort`, `limit`, and `offset`.
 

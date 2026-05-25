@@ -1,6 +1,6 @@
 ---
 name: memories
-description: 'Use when working with the memories-api MCP server, query_memories_tool, create_memory_tool, update_memory_tool, delete_memory_tool, or read_memory. Guides recall, personalization, deduping, sensitive-memory confirmation, contradiction handling, and prompt/resource usage for this repo.'
+description: 'Use when working with the memories-api MCP server, bootstrap_memories_tool, query_memories_tool, create_memory_tool, update_memory_tool, delete_memory_tool, or read_memory. Guides recall, personalization, deduping, sensitive-memory confirmation, contradiction handling, and prompt/resource usage for this repo.'
 argument-hint: '[task or memory operation]'
 user-invocable: true
 ---
@@ -19,8 +19,8 @@ Use this skill when an agent is deciding how to interact with the memories API o
 ## Procedure
 
 1. Decide whether memory recall is actually needed for the task.
-2. At the beginning of a session, run two targeted bootstrap queries: active preferences first, then active identity memories.
-3. For a substantive reply, use one moderate query shaped by `memory_type`, `tag`, or focused `q` terms.
+2. At the beginning of a session, call `bootstrap_memories_tool` to load active preferences first, then active identity memories.
+3. For a substantive reply, use one moderate `query_memories_tool` call shaped by `memory_type`, `tag`, or focused `q` terms.
 4. If considering a write, check whether the information is durable, atomic, and safe to store.
 5. Ask before storing any sensitive memory.
 6. Prefer updating an existing memory over creating a duplicate when the match is clear.

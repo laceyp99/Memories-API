@@ -1,8 +1,10 @@
 # Query Recipes
 
-Use these recipes as starting points. Keep limits small unless the user explicitly asks for broader recall.
+Use these recipes as the canonical query shapes behind `bootstrap_memories_tool` and targeted `query_memories_tool` calls. Keep limits small unless the user explicitly asks for broader recall.
 
 ## Bootstrap Preference Recall
+
+This is the preference page returned by `bootstrap_memories_tool`.
 
 ```json
 {
@@ -15,6 +17,8 @@ Use these recipes as starting points. Keep limits small unless the user explicit
 ```
 
 ## Bootstrap Identity Recall
+
+This is the identity page returned by `bootstrap_memories_tool`.
 
 ```json
 {

@@ -216,6 +216,7 @@ def test_build_memories_tool_behavior_resource_includes_policy_and_recipes():
 
 	assert "# Memories Tool Behavior Policy" in resource_text
 	assert "# Query Recipes" in resource_text
+	assert "bootstrap_memories_tool" in resource_text
 	assert "### Sensitive Data" in resource_text
 	assert "## Deduping and Updates" in resource_text
 	assert "## Tag Guidance" in resource_text
@@ -227,6 +228,8 @@ def test_build_use_memories_api_prompt_messages_returns_static_messages():
 
 	assert [message.role for message in messages] == ["assistant"]
 	assert "memories-api MCP server" in messages[0].content.text
+	assert "bootstrap_memories_tool" in messages[0].content.text
+	assert "query_memories_tool" in messages[0].content.text
 	assert "Default to autonomous memory handling" in messages[0].content.text
 	assert "sensitive markers" in messages[0].content.text
 	assert "Deduping process before writes" in messages[0].content.text
@@ -275,5 +278,7 @@ def test_mcp_gets_static_memories_prompt_messages():
 
 	assert [message.role for message in prompt.messages] == ["assistant"]
 	assert "memories-api MCP server" in prompt.messages[0].content.text
+	assert "bootstrap_memories_tool" in prompt.messages[0].content.text
+	assert "query_memories_tool" in prompt.messages[0].content.text
 	assert "Default to autonomous memory handling" in prompt.messages[0].content.text
 	assert "Memory actions:" in prompt.messages[0].content.text

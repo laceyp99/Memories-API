@@ -12,18 +12,15 @@ Use this policy when deciding how to query, read, create, update, or invalidate 
 
 ### Bootstrap recall
 
-At the beginning of a session, run two targeted queries:
+At the beginning of a session, call `bootstrap_memories_tool` once to retrieve active preferences and active identity memories in one read-only step.
 
-1. Active preferences with `memory_type=preference`, `status=active`, `sort=updated_at`, and a small `limit`.
-2. Active identity memories with `memory_type=identity`, `status=active`, `sort=updated_at`, and a small `limit`.
-
-Use `query_memories_tool` for these retrieval steps.
+Use `query_memories_tool` for any follow-up retrieval steps that need narrower or broader filtering than the bootstrap snapshot.
 
 Do not start with a broad catch-all query.
 
 ### Substantive reply recall
 
-For a reply that benefits from memory, use one moderate query shaped by the task.
+For a reply that benefits from memory, use multiple `query_memories_tool` calls shaped by the task.
 
 Preferred order:
 
