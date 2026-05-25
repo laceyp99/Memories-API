@@ -12,15 +12,15 @@ Use this policy when deciding how to query, read, create, update, or invalidate 
 
 ### Bootstrap recall
 
-At the beginning of a session, call `bootstrap_memories_tool` once to retrieve active preferences and active identity memories in one read-only step.
+At the beginning of a session, call `prime_memory_context` once to retrieve active preferences and active identity memories in one read-only step.
 
-Use `query_memories_tool` for any follow-up retrieval steps that need narrower or broader filtering than the bootstrap snapshot.
+Use `search_memories` for any follow-up retrieval steps that need narrower or broader filtering than the bootstrap snapshot.
 
 Do not start with a broad catch-all query.
 
 ### Substantive reply recall
 
-For a reply that benefits from memory, use multiple `query_memories_tool` calls shaped by the task.
+For a reply that benefits from memory, use multiple `search_memories` calls shaped by the task.
 
 Preferred order:
 
@@ -79,7 +79,7 @@ Recommended flow:
 5. If the information is materially distinct, create a new memory.
 6. If overlap or contradiction is uncertain, ask the user before writing.
 
-When the match is clear, prefer `update_memory_tool` over `create_memory_tool`.
+When the match is clear, prefer `revise_memory` over `record_memory`.
 Create a new memory only when the new information is materially distinct.
 
 ## Contradictions

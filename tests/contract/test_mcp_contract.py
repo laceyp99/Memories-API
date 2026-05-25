@@ -1,10 +1,10 @@
 import pytest
 
-from app.mcp_server import bootstrap_memories_tool, delete_memory_tool, query_memories_tool
+from app.mcp_server import prime_memory_context, retire_memory, search_memories
 from app.schemas import Memory
 
 
-def test_query_memories_tool_returns_paginated_response_from_shared_retrieval_path(monkeypatch):
+def test_search_memories_returns_paginated_response_from_shared_retrieval_path(monkeypatch):
 	seen = {}
 	returned_memory = Memory(
 		id=1,
@@ -31,7 +31,7 @@ def test_query_memories_tool_returns_paginated_response_from_shared_retrieval_pa
 		lambda memories: [refreshed_memory],
 	)
 
-	result = query_memories_tool(
+	result = search_memories(
 		status="active",
 		memory_type="fact",
 		tag="python",
@@ -71,7 +71,7 @@ def test_query_memories_tool_returns_paginated_response_from_shared_retrieval_pa
 	}
 
 
-def test_bootstrap_memories_tool_returns_two_shared_retrieval_pages(monkeypatch):
+def test_prime_memory_context_returns_two_shared_retrieval_pages(monkeypatch):
 	seen = []
 	preference_memory = Memory(
 		id=1,
@@ -110,7 +110,7 @@ def test_bootstrap_memories_tool_returns_two_shared_retrieval_pages(monkeypatch)
 		"app.mcp_server.refresh_memories_last_accessed", fake_refresh_memories_last_accessed
 	)
 
-	result = bootstrap_memories_tool()
+	result = prime_memory_context()
 
 	assert seen == [
 		{
@@ -119,7 +119,7 @@ def test_bootstrap_memories_tool_returns_two_shared_retrieval_pages(monkeypatch)
 			"tag": None,
 			"q": None,
 			"sort": "updated_at",
-			"limit": 5,
+			"limit": 10,
 			"offset": 0,
 		},
 		{
@@ -128,7 +128,7 @@ def test_bootstrap_memories_tool_returns_two_shared_retrieval_pages(monkeypatch)
 			"tag": None,
 			"q": None,
 			"sort": "updated_at",
-			"limit": 5,
+			"limit": 10,
 			"offset": 0,
 		},
 	]
@@ -136,28 +136,28 @@ def test_bootstrap_memories_tool_returns_two_shared_retrieval_pages(monkeypatch)
 		"preferences": {
 			"items": [preference_memory.model_dump()],
 			"total": 1,
-			"limit": 5,
+			"limit": 10,
 			"offset": 0,
 			"has_more": False,
 		},
 		"identities": {
 			"items": [identity_memory.model_dump()],
 			"total": 1,
-			"limit": 5,
+			"limit": 10,
 			"offset": 0,
 			"has_more": False,
 		},
 	}
 
 
-def test_delete_memory_tool_raises_value_error_when_missing(monkeypatch):
+def test_retire_memory_raises_value_error_when_missing(monkeypatch):
 	monkeypatch.setattr("app.mcp_server.delete_memory", lambda memory_id: None)
 
 	with pytest.raises(ValueError, match="Memory 7 not found"):
-		delete_memory_tool(7)
+		retire_memory(7)
 
 
-def test_delete_memory_tool_returns_soft_deleted_memory(monkeypatch):
+def test_retire_memory_returns_soft_deleted_memory(monkeypatch):
 	deleted_memory = Memory(
 		id=7,
 		content="Unsafe note",
@@ -172,7 +172,7 @@ def test_delete_memory_tool_returns_soft_deleted_memory(monkeypatch):
 
 	monkeypatch.setattr("app.mcp_server.delete_memory", lambda memory_id: deleted_memory)
 
-	result = delete_memory_tool(7)
+	result = retire_memory(7)
 
 	assert result == {
 		"id": 7,

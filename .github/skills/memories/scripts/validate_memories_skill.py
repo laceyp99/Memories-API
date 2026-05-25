@@ -14,11 +14,12 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[4]
 
 EXPECTED_TOOL_SYMBOLS = [
-	"create_memory_tool",
-	"update_memory_tool",
-	"delete_memory_tool",
-	"read_memory",
-	"query_memories_tool",
+	"record_memory",
+	"revise_memory",
+	"retire_memory",
+	"inspect_memory",
+	"search_memories",
+	"prime_memory_context",
 ]
 
 EXPECTED_PROMPT_NAME = "use_memories_api"
@@ -51,9 +52,10 @@ def validate_prompt_and_resource_builders(mcp_server, failures: list[str]) -> No
 		failures,
 	)
 	record("# Query Recipes" in resource_text, "Resource contains query recipes heading", failures)
+	record("search_memories" in resource_text, "Resource mentions search_memories", failures)
 	record(
-		"query_memories_tool" in resource_text,
-		"Resource mentions query_memories_tool",
+		"prime_memory_context" in resource_text,
+		"Resource mentions prime_memory_context",
 		failures,
 	)
 
@@ -97,7 +99,7 @@ def validate_registered_surfaces(mcp_server, failures: list[str]) -> None:
 
 
 def validate_tool_workflow(mcp_server, failures: list[str]) -> None:
-	created = mcp_server.create_memory_tool(
+	created = mcp_server.record_memory(
 		content="User prefers concise answers",
 		tags=["preference", "writing-style"],
 		memory_type="preference",
@@ -106,7 +108,7 @@ def validate_tool_workflow(mcp_server, failures: list[str]) -> None:
 	record(created["status"] == "active", "Create tool returns an active memory", failures)
 	record(created["memory_type"] == "preference", "Create tool preserves memory_type", failures)
 
-	queried = mcp_server.query_memories_tool(
+	queried = mcp_server.search_memories(
 		status="active",
 		memory_type="preference",
 		tag="writing-style",
@@ -123,10 +125,10 @@ def validate_tool_workflow(mcp_server, failures: list[str]) -> None:
 		failures,
 	)
 
-	read_back = mcp_server.read_memory(memory_id)
+	read_back = mcp_server.inspect_memory(memory_id)
 	record(read_back["id"] == memory_id, "Read tool returns the created memory", failures)
 
-	updated = mcp_server.update_memory_tool(
+	updated = mcp_server.revise_memory(
 		memory_id,
 		content="User prefers concise technical answers",
 	)
@@ -136,10 +138,10 @@ def validate_tool_workflow(mcp_server, failures: list[str]) -> None:
 		failures,
 	)
 
-	deleted = mcp_server.delete_memory_tool(memory_id)
+	deleted = mcp_server.retire_memory(memory_id)
 	record(deleted["status"] == "deleted", "Delete tool performs a soft delete", failures)
 
-	deleted_page = mcp_server.query_memories_tool(status="deleted", limit=5, offset=0)
+	deleted_page = mcp_server.search_memories(status="deleted", limit=5, offset=0)
 	record(
 		deleted_page["total"] == 1,
 		"Deleted memories remain queryable by explicit status",
@@ -147,7 +149,7 @@ def validate_tool_workflow(mcp_server, failures: list[str]) -> None:
 	)
 
 	try:
-		mcp_server.read_memory(memory_id)
+		mcp_server.inspect_memory(memory_id)
 	except ValueError:
 		record(True, "Read tool hides deleted memories from normal reads", failures)
 	else:

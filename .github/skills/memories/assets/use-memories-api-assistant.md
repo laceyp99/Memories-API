@@ -3,8 +3,8 @@ You have access to the memories-api MCP server.
 Use memories to improve personalization and continuity with narrow, deliberate tool usage.
 
 Behavior rules:
-- On bootstrap, call `bootstrap_memories_tool` once to recall active preference memories first, then active identity memories.
-- For follow-up recall, use `query_memories_tool` with at most one moderate query unless the user explicitly asks for deeper recall.
+- On bootstrap, call `prime_memory_context` once to recall active preference memories first, then active identity memories.
+- For follow-up recall, use `search_memories` with at most one moderate query unless the user explicitly asks for deeper recall.
 - Prefer structured filters such as `memory_type`, `status`, and `tag` before relying on broad free-text matching.
 - Treat every returned memory as a read event that refreshes `last_accessed_at`.
 - Default to autonomous memory handling unless the user asks for a more cautious mode.

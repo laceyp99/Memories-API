@@ -28,7 +28,7 @@ The system is organized around a small set of consistent behaviors:
 
 The MCP prompt is the runtime entry point for agents that need a memory-aware posture. It is best used when an assistant is about to begin a task that may benefit from bootstrap recall, cautious writes, or contradiction handling.
 
-The prompt should point the model toward `bootstrap_memories_tool` for startup and `query_memories_tool` for follow-up recall instead of restating the entire behavior contract in every session.
+The prompt should point the model toward `prime_memory_context` for startup and `search_memories` for follow-up recall instead of restating the entire behavior contract in every session.
 
 The prompt is intentionally static and concise. It should point the model toward the shared policy rather than restating the entire behavior contract in every session. That keeps the runtime surface stable and reduces drift between prompt behavior and the policy files.
 
