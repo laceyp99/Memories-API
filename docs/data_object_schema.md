@@ -257,7 +257,8 @@ In this project, `version` increments only when PATCH changes the record.
 This project uses one retrieval contract across HTTP and MCP.
 
 - HTTP: `GET /memories`
-- MCP: `query_memories_tool`
+- MCP bootstrap: `prime_memory_context`
+- MCP retrieval: `search_memories`
 
 Both surfaces accept the same query fields:
 

@@ -20,13 +20,15 @@ The system is organized around a small set of consistent behaviors:
 | Surface | Purpose | Canonical file |
 | --- | --- | --- |
 | MCP prompt | Static assistant priming for memory-aware sessions | [use-memories-api-assistant.md](../.github/skills/memories/assets/use-memories-api-assistant.md) |
-| MCP resource | Canonical policy and query recipes served by the MCP server | [memories-tool-behavior-policy.md](../.github/skills/memories/references/memories-tool-behavior-policy.md), [memories-query-recipes.md](../.github/skills/memories/references/memories-query-recipes.md) |
+| MCP resource | Canonical policy, bootstrap guidance, and query recipes served by the MCP server | [memories-tool-behavior-policy.md](../.github/skills/memories/references/memories-tool-behavior-policy.md), [memories-query-recipes.md](../.github/skills/memories/references/memories-query-recipes.md) |
 | Repository skill | Workspace guidance for using and maintaining the memory workflow | [SKILL.md](../.github/skills/memories/SKILL.md) |
 | MCP wiring | FastMCP registration for the prompt and resource | [app/mcp_server.py](../app/mcp_server.py) |
 
 ## MCP prompt
 
-The MCP prompt is the runtime entry point for agents that need a memory-aware posture. It is best used when an assistant is about to begin a task that may benefit from recall, cautious writes, or contradiction handling.
+The MCP prompt is the runtime entry point for agents that need a memory-aware posture. It is best used when an assistant is about to begin a task that may benefit from bootstrap recall, cautious writes, or contradiction handling.
+
+The prompt should point the model toward `prime_memory_context` for startup and `search_memories` for follow-up recall instead of restating the entire behavior contract in every session.
 
 The prompt is intentionally static and concise. It should point the model toward the shared policy rather than restating the entire behavior contract in every session. That keeps the runtime surface stable and reduces drift between prompt behavior and the policy files.
 

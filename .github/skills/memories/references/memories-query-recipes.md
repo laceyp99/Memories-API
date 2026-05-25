@@ -1,8 +1,10 @@
 # Query Recipes
 
-Use these recipes as starting points. Keep limits small unless the user explicitly asks for broader recall.
+Use these recipes as the canonical query shapes behind `prime_memory_context` and targeted `search_memories` calls. Keep limits small unless the user explicitly asks for broader recall.
 
 ## Bootstrap Preference Recall
+
+This is the preference page returned by `prime_memory_context`.
 
 ```json
 {
@@ -15,6 +17,8 @@ Use these recipes as starting points. Keep limits small unless the user explicit
 ```
 
 ## Bootstrap Identity Recall
+
+This is the identity page returned by `prime_memory_context`.
 
 ```json
 {
@@ -77,8 +81,8 @@ Use this workflow when the content may need `sensitive`, `pii`, or `health` tags
 
 Before creating a memory, check whether an existing active memory already captures the same durable fact or preference.
 
-- If the match is clear, use `update_memory_tool`.
-- If the new information is materially distinct, use `create_memory_tool`.
+- If the match is clear, use `revise_memory`.
+- If the new information is materially distinct, use `record_memory`.
 - If the overlap is uncertain, ask the user before writing.
 
 For sensitive memories, do the confirmation step before any create or update.
@@ -90,4 +94,4 @@ If a new statement conflicts with an existing memory:
 1. Read or query the existing memory narrowly.
 2. Explain the conflict to the user.
 3. Ask whether to correct the existing record or invalidate it.
-4. Apply `update_memory_tool` or `update_memory_tool(..., status="invalid")` only after confirmation.
+4. Apply `revise_memory` or `revise_memory(..., status="invalid")` only after confirmation.

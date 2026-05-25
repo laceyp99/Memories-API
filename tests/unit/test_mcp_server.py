@@ -5,12 +5,13 @@ import pytest
 from app.mcp_server import (
 	build_memories_tool_behavior_resource,
 	build_use_memories_api_prompt_messages,
-	create_memory_tool,
+	inspect_memory,
 	mcp,
-	query_memories_tool,
-	read_memory,
+	prime_memory_context,
+	record_memory,
+	revise_memory,
+	search_memories,
 	serialize_memory,
-	update_memory_tool,
 )
 from app.schemas import Memory, MemoryUpdate
 
@@ -31,14 +32,14 @@ def test_serialize_memory_returns_model_dump():
 	assert serialize_memory(memory) == memory.model_dump()
 
 
-def test_read_memory_raises_value_error_when_missing(monkeypatch):
+def test_inspect_memory_raises_value_error_when_missing(monkeypatch):
 	monkeypatch.setattr("app.mcp_server.get_memory", lambda memory_id: None)
 
 	with pytest.raises(ValueError, match="Memory 99 not found"):
-		read_memory(99)
+		inspect_memory(99)
 
 
-def test_create_memory_tool_uses_schema_defaults(monkeypatch):
+def test_record_memory_uses_schema_defaults(monkeypatch):
 	created = {}
 
 	def fake_create_memory(memory):
@@ -57,14 +58,14 @@ def test_create_memory_tool_uses_schema_defaults(monkeypatch):
 
 	monkeypatch.setattr("app.mcp_server.create_memory", fake_create_memory)
 
-	result = create_memory_tool(content="Remember this", tags=["note"])
+	result = record_memory(content="Remember this", tags=["note"])
 
 	assert created["memory"].memory_type == "fact"
 	assert created["memory"].status == "active"
 	assert result["content"] == "Remember this"
 
 
-def test_query_memories_tool_uses_default_query_values(monkeypatch):
+def test_search_memories_uses_default_query_values(monkeypatch):
 	seen = {}
 
 	def fake_get_memories_page(query):
@@ -74,7 +75,7 @@ def test_query_memories_tool_uses_default_query_values(monkeypatch):
 	monkeypatch.setattr("app.mcp_server.get_memories_page", fake_get_memories_page)
 	monkeypatch.setattr("app.mcp_server.refresh_memories_last_accessed", lambda memories: memories)
 
-	result = query_memories_tool()
+	result = search_memories()
 
 	assert seen["query"].model_dump() == {
 		"status": None,
@@ -94,7 +95,95 @@ def test_query_memories_tool_uses_default_query_values(monkeypatch):
 	}
 
 
-def test_update_memory_tool_omits_unset_optional_fields(monkeypatch):
+def test_prime_memory_context_uses_canonical_startup_queries(monkeypatch):
+	seen_queries = []
+	preference_memory = Memory(
+		id=1,
+		content="User prefers concise answers.",
+		tags=["preference", "writing-style"],
+		created_at="2026-04-06T14:12:00.000000Z",
+		updated_at="2026-04-06T14:13:00.000000Z",
+		last_accessed_at=None,
+		memory_type="preference",
+		status="active",
+		version=1,
+	)
+	identity_memory = Memory(
+		id=2,
+		content="User is a software engineer.",
+		tags=["identity", "role"],
+		created_at="2026-04-06T14:12:00.000000Z",
+		updated_at="2026-04-06T14:14:00.000000Z",
+		last_accessed_at=None,
+		memory_type="identity",
+		status="active",
+		version=1,
+	)
+
+	def fake_get_memories_page(query):
+		seen_queries.append(query.model_dump())
+		if query.memory_type == "preference":
+			return [preference_memory], 1
+		return [identity_memory], 1
+
+	def fake_refresh_memories_last_accessed(memories):
+		return [
+			memory.model_copy(update={"last_accessed_at": f"refreshed-{memory.id}"})
+			for memory in memories
+		]
+
+	monkeypatch.setattr("app.mcp_server.get_memories_page", fake_get_memories_page)
+	monkeypatch.setattr(
+		"app.mcp_server.refresh_memories_last_accessed", fake_refresh_memories_last_accessed
+	)
+
+	result = prime_memory_context()
+
+	assert seen_queries == [
+		{
+			"status": "active",
+			"memory_type": "preference",
+			"tag": None,
+			"q": None,
+			"sort": "updated_at",
+			"limit": 10,
+			"offset": 0,
+		},
+		{
+			"status": "active",
+			"memory_type": "identity",
+			"tag": None,
+			"q": None,
+			"sort": "updated_at",
+			"limit": 10,
+			"offset": 0,
+		},
+	]
+	assert result == {
+		"preferences": {
+			"items": [
+				preference_memory.model_copy(
+					update={"last_accessed_at": "refreshed-1"}
+				).model_dump()
+			],
+			"total": 1,
+			"limit": 10,
+			"offset": 0,
+			"has_more": False,
+		},
+		"identities": {
+			"items": [
+				identity_memory.model_copy(update={"last_accessed_at": "refreshed-2"}).model_dump()
+			],
+			"total": 1,
+			"limit": 10,
+			"offset": 0,
+			"has_more": False,
+		},
+	}
+
+
+def test_revise_memory_omits_unset_optional_fields(monkeypatch):
 	seen = {}
 
 	def fake_update_memory(memory_id, memory):
@@ -114,7 +203,7 @@ def test_update_memory_tool_omits_unset_optional_fields(monkeypatch):
 
 	monkeypatch.setattr("app.mcp_server.update_memory", fake_update_memory)
 
-	result = update_memory_tool(7, content="Updated memory content")
+	result = revise_memory(7, content="Updated memory content")
 
 	assert seen["memory_id"] == 7
 	assert isinstance(seen["memory"], MemoryUpdate)
@@ -127,10 +216,11 @@ def test_build_memories_tool_behavior_resource_includes_policy_and_recipes():
 
 	assert "# Memories Tool Behavior Policy" in resource_text
 	assert "# Query Recipes" in resource_text
+	assert "prime_memory_context" in resource_text
 	assert "### Sensitive Data" in resource_text
 	assert "## Deduping and Updates" in resource_text
 	assert "## Tag Guidance" in resource_text
-	assert "query_memories_tool" in resource_text
+	assert "search_memories" in resource_text
 
 
 def test_build_use_memories_api_prompt_messages_returns_static_messages():
@@ -138,6 +228,8 @@ def test_build_use_memories_api_prompt_messages_returns_static_messages():
 
 	assert [message.role for message in messages] == ["assistant"]
 	assert "memories-api MCP server" in messages[0].content.text
+	assert "prime_memory_context" in messages[0].content.text
+	assert "search_memories" in messages[0].content.text
 	assert "Default to autonomous memory handling" in messages[0].content.text
 	assert "sensitive markers" in messages[0].content.text
 	assert "Deduping process before writes" in messages[0].content.text
@@ -174,10 +266,19 @@ def test_mcp_lists_static_memories_prompt():
 	assert prompt.arguments == []
 
 
+def test_mcp_lists_prime_memory_context_tool():
+	tools = asyncio.run(mcp.list_tools())
+	tool = next(item for item in tools if item.name == "prime_memory_context")
+
+	assert tool.name == "prime_memory_context"
+
+
 def test_mcp_gets_static_memories_prompt_messages():
 	prompt = asyncio.run(mcp.get_prompt("use_memories_api"))
 
 	assert [message.role for message in prompt.messages] == ["assistant"]
 	assert "memories-api MCP server" in prompt.messages[0].content.text
+	assert "prime_memory_context" in prompt.messages[0].content.text
+	assert "search_memories" in prompt.messages[0].content.text
 	assert "Default to autonomous memory handling" in prompt.messages[0].content.text
 	assert "Memory actions:" in prompt.messages[0].content.text
