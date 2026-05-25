@@ -51,6 +51,29 @@ def serialize_memory(memory) -> dict:
 	return memory.model_dump()
 
 
+def _build_memory_page_response(query: MemoryListQuery) -> dict:
+	paged_memories, total = get_memories_page(query)
+	items = refresh_memories_last_accessed(paged_memories)
+
+	return MemoryListResponse(
+		items=items,
+		total=total,
+		limit=query.limit,
+		offset=query.offset,
+		has_more=query.offset + len(items) < total,
+	).model_dump()
+
+
+def _build_bootstrap_partial_query(memory_type: str) -> MemoryListQuery:
+	return MemoryListQuery(
+		status="active",
+		memory_type=memory_type,
+		sort="updated_at",
+		limit=5,
+		offset=0,
+	)
+
+
 @mcp.resource(
 	"memories://policy/tool-behavior",
 	name="memories-tool-behavior-policy",
@@ -151,16 +174,19 @@ def query_memories_tool(
 		limit=limit,
 		offset=offset,
 	)
-	paged_memories, total = get_memories_page(query)
-	items = refresh_memories_last_accessed(paged_memories)
+	return _build_memory_page_response(query)
 
-	return MemoryListResponse(
-		items=items,
-		total=total,
-		limit=query.limit,
-		offset=query.offset,
-		has_more=query.offset + len(items) < total,
-	).model_dump()
+
+@mcp.tool(description="Bootstrap active preference and identity memories in one read-only call.")
+def bootstrap_memories_tool() -> dict:
+	"""Return the canonical bootstrap recall pages for preferences and identities."""
+	preference_query = _build_bootstrap_partial_query("preference")
+	identity_query = _build_bootstrap_partial_query("identity")
+
+	return {
+		"preferences": _build_memory_page_response(preference_query),
+		"identities": _build_memory_page_response(identity_query),
+	}
 
 
 @mcp.tool(

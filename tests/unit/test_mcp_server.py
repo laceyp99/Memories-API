@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from app.mcp_server import (
+	bootstrap_memories_tool,
 	build_memories_tool_behavior_resource,
 	build_use_memories_api_prompt_messages,
 	create_memory_tool,
@@ -94,6 +95,94 @@ def test_query_memories_tool_uses_default_query_values(monkeypatch):
 	}
 
 
+def test_bootstrap_memories_tool_uses_canonical_startup_queries(monkeypatch):
+	seen_queries = []
+	preference_memory = Memory(
+		id=1,
+		content="User prefers concise answers.",
+		tags=["preference", "writing-style"],
+		created_at="2026-04-06T14:12:00.000000Z",
+		updated_at="2026-04-06T14:13:00.000000Z",
+		last_accessed_at=None,
+		memory_type="preference",
+		status="active",
+		version=1,
+	)
+	identity_memory = Memory(
+		id=2,
+		content="User is a software engineer.",
+		tags=["identity", "role"],
+		created_at="2026-04-06T14:12:00.000000Z",
+		updated_at="2026-04-06T14:14:00.000000Z",
+		last_accessed_at=None,
+		memory_type="identity",
+		status="active",
+		version=1,
+	)
+
+	def fake_get_memories_page(query):
+		seen_queries.append(query.model_dump())
+		if query.memory_type == "preference":
+			return [preference_memory], 1
+		return [identity_memory], 1
+
+	def fake_refresh_memories_last_accessed(memories):
+		return [
+			memory.model_copy(update={"last_accessed_at": f"refreshed-{memory.id}"})
+			for memory in memories
+		]
+
+	monkeypatch.setattr("app.mcp_server.get_memories_page", fake_get_memories_page)
+	monkeypatch.setattr(
+		"app.mcp_server.refresh_memories_last_accessed", fake_refresh_memories_last_accessed
+	)
+
+	result = bootstrap_memories_tool()
+
+	assert seen_queries == [
+		{
+			"status": "active",
+			"memory_type": "preference",
+			"tag": None,
+			"q": None,
+			"sort": "updated_at",
+			"limit": 5,
+			"offset": 0,
+		},
+		{
+			"status": "active",
+			"memory_type": "identity",
+			"tag": None,
+			"q": None,
+			"sort": "updated_at",
+			"limit": 5,
+			"offset": 0,
+		},
+	]
+	assert result == {
+		"preferences": {
+			"items": [
+				preference_memory.model_copy(
+					update={"last_accessed_at": "refreshed-1"}
+				).model_dump()
+			],
+			"total": 1,
+			"limit": 5,
+			"offset": 0,
+			"has_more": False,
+		},
+		"identities": {
+			"items": [
+				identity_memory.model_copy(update={"last_accessed_at": "refreshed-2"}).model_dump()
+			],
+			"total": 1,
+			"limit": 5,
+			"offset": 0,
+			"has_more": False,
+		},
+	}
+
+
 def test_update_memory_tool_omits_unset_optional_fields(monkeypatch):
 	seen = {}
 
@@ -172,6 +261,13 @@ def test_mcp_lists_static_memories_prompt():
 
 	assert prompt.description is not None
 	assert prompt.arguments == []
+
+
+def test_mcp_lists_bootstrap_memories_tool():
+	tools = asyncio.run(mcp.list_tools())
+	tool = next(item for item in tools if item.name == "bootstrap_memories_tool")
+
+	assert tool.name == "bootstrap_memories_tool"
 
 
 def test_mcp_gets_static_memories_prompt_messages():
