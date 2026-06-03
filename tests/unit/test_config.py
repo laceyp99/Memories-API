@@ -72,3 +72,32 @@ def test_load_browser_client_config_returns_exact_allowed_origins(monkeypatch, t
 
 	assert config.allowed_origins == ["http://localhost:3000", "http://127.0.0.1:8080"]
 	assert config.warnings == []
+
+
+def test_load_browser_client_config_preserves_valid_origins_when_entries_are_invalid(
+	monkeypatch, tmp_path: Path
+):
+	config_path = tmp_path / "mcp_browser_clients.local.json"
+	config_path.write_text(
+		json.dumps(
+			{
+				"browser_clients": [
+					{
+						"name": "open-webui-local",
+						"origin": "http://localhost:3000",
+					},
+					{
+						"name": "missing-origin",
+					},
+				],
+			}
+		),
+		encoding="utf-8",
+	)
+	monkeypatch.setattr("app.config.MCP_BROWSER_CLIENTS_LOCAL_FILE", config_path)
+
+	config = load_browser_client_config()
+
+	assert config.allowed_origins == ["http://localhost:3000"]
+	assert len(config.warnings) == 1
+	assert "browser_clients[1]" in config.warnings[0]
