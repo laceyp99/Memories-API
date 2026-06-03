@@ -79,8 +79,8 @@ def test_memory_list_query_validates_status_memory_type_and_text_filters():
 	query = MemoryListQuery(
 		status="active",
 		memory_type="identity",
-		tag="python",
-		q="fastapi",
+		tag=" python ",
+		q=" fastapi ",
 	)
 
 	assert query.status == "active"

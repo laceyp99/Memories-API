@@ -161,9 +161,10 @@ class MemoryListQuery(BaseModel):
 			return value
 		if not isinstance(value, str):
 			raise ValueError("filter must be a string")
-		if not value.strip():
+		normalized_value = value.strip()
+		if not normalized_value:
 			raise ValueError("filter cannot be empty")
-		return value
+		return normalized_value
 
 
 class MemoryListResponse(BaseModel):
