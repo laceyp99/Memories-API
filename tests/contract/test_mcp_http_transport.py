@@ -56,6 +56,27 @@ def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):
 	assert response.status_code != 404
 
 
+def test_mcp_http_allows_valid_origin_when_another_browser_client_is_invalid(
+	monkeypatch, tmp_path: Path
+):
+	with build_client_with_browser_config(
+		monkeypatch,
+		tmp_path,
+		[
+			{"name": "open-webui-local", "origin": "http://localhost:3000"},
+			{"name": "missing-origin"},
+		],
+	) as client:
+		response = client.post(
+			"/mcp",
+			headers={"Origin": "http://localhost:3000"},
+			json={},
+		)
+
+	assert response.status_code != 403
+	assert response.status_code != 404
+
+
 def test_mcp_http_allows_mcp_request_headers_for_allowed_origin(monkeypatch, tmp_path: Path):
 	with build_client_with_browser_config(
 		monkeypatch,

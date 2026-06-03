@@ -58,10 +58,7 @@ def load_browser_client_config() -> BrowserClientConfig:
 
 		allowed_origins.append(origin)
 
-	if warnings:
-		return BrowserClientConfig(allowed_origins=[], warnings=warnings)
-
-	return BrowserClientConfig(allowed_origins=allowed_origins, warnings=[])
+	return BrowserClientConfig(allowed_origins=allowed_origins, warnings=warnings)
 
 
 def get_database_file_path() -> Path:
