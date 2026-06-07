@@ -205,6 +205,7 @@ def get_memories_page(query: MemoryListQuery) -> tuple[list[Memory], int]:
 	paging_parameters = [*parameters, query.limit, query.offset]
 
 	with get_connection() as connection:
+		connection.execute("BEGIN")
 		total = connection.execute(
 			f"SELECT COUNT(*) FROM memories {where_clause}",
 			parameters,
@@ -219,6 +220,7 @@ def get_memories_page(query: MemoryListQuery) -> tuple[list[Memory], int]:
 			""",
 			paging_parameters,
 		).fetchall()
+		connection.commit()
 
 	return [_row_to_memory(row) for row in rows], total
 
