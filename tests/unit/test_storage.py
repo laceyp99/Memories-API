@@ -1,3 +1,5 @@
+import pytest
+
 from app.schemas import MemoryCreate, MemoryListQuery, MemoryUpdate
 from app.storage import (
 	create_memory,
@@ -111,6 +113,58 @@ def test_get_memories_page_sorts_by_last_accessed_at_and_counts_full_result(monk
 
 	assert total == 3
 	assert [memory.id for memory in items] == [2, 1]
+
+
+@pytest.mark.xfail(reason="get_memories_page does not yet start a read transaction", strict=True)
+def test_get_memories_page_reads_count_and_rows_in_one_transaction(monkeypatch):
+	executed_statements: list[str] = []
+
+	class FakeResult:
+		def __init__(self, *, one=None, all_rows=None):
+			self._one = one
+			self._all_rows = all_rows or []
+
+		def fetchone(self):
+			return self._one
+
+		def fetchall(self):
+			return self._all_rows
+
+	class FakeConnection:
+		def execute(self, sql, parameters=()):
+			normalized_sql = " ".join(sql.split()).upper()
+
+			if normalized_sql == "BEGIN":
+				executed_statements.append("BEGIN")
+				return FakeResult()
+
+			if "SELECT COUNT(*) FROM MEMORIES" in normalized_sql:
+				executed_statements.append("COUNT")
+				return FakeResult(one=(0,))
+
+			if "SELECT ID, CONTENT, TAGS" in normalized_sql:
+				executed_statements.append("PAGE")
+				return FakeResult(all_rows=[])
+
+			raise AssertionError(f"Unexpected SQL: {sql}")
+
+		def commit(self):
+			executed_statements.append("COMMIT")
+
+	class FakeConnectionContext:
+		def __enter__(self):
+			return FakeConnection()
+
+		def __exit__(self, _exc_type, _exc_value, _traceback):
+			return False
+
+	monkeypatch.setattr("app.storage.get_connection", lambda: FakeConnectionContext())
+
+	items, total = get_memories_page(MemoryListQuery(limit=2, offset=0))
+
+	assert items == []
+	assert total == 0
+	assert executed_statements == ["BEGIN", "COUNT", "PAGE", "COMMIT"]
 
 
 def test_update_memory_returns_existing_memory_without_refreshing_timestamp(monkeypatch):
