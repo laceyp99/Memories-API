@@ -17,6 +17,7 @@ from app.schemas import (
 	MemoryUpdate,
 )
 from app.storage import (
+	MemoryWriteConflictError,
 	create_memory,
 	create_memory_batch,
 	delete_memory,
@@ -98,7 +99,14 @@ def get_memory_by_id(memory_id: int) -> Memory:
 
 @app.patch("/memories/{memory_id}")
 def patch_memory_by_id(memory_id: int, memory: MemoryUpdate) -> Memory:
-	updated_memory = update_memory(memory_id, memory)
+	try:
+		updated_memory = update_memory(memory_id, memory)
+	except MemoryWriteConflictError as error:
+		raise HTTPException(
+			status_code=409,
+			detail="Memory was modified by another request",
+		) from error
+
 	if updated_memory is None:
 		raise HTTPException(status_code=404, detail="Memory not found")
 	return updated_memory
@@ -106,7 +114,14 @@ def patch_memory_by_id(memory_id: int, memory: MemoryUpdate) -> Memory:
 
 @app.delete("/memories/{memory_id}")
 def delete_memory_by_id(memory_id: int) -> Memory:
-	deleted_memory = delete_memory(memory_id)
+	try:
+		deleted_memory = delete_memory(memory_id)
+	except MemoryWriteConflictError as error:
+		raise HTTPException(
+			status_code=409,
+			detail="Memory was modified by another request",
+		) from error
+
 	if deleted_memory is None:
 		raise HTTPException(status_code=404, detail="Memory not found")
 	return deleted_memory

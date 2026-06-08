@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from helpers.database_helpers import read_database
 
+from app import main as app_main
 from app import storage
 
 
@@ -45,6 +46,36 @@ def test_missing_memory_returns_documented_404_shape(client: TestClient, data_fi
 
 	assert response.status_code == 404
 	assert response.json() == {"detail": "Memory not found"}
+	assert read_database(data_file) == []
+
+
+def test_patch_memory_conflict_returns_documented_409_shape(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	def raise_conflict(_memory_id, _memory):
+		raise storage.MemoryWriteConflictError("stale write")
+
+	monkeypatch.setattr(app_main, "update_memory", raise_conflict)
+
+	response = client.patch("/memories/1", json={"content": "Updated content"})
+
+	assert response.status_code == 409
+	assert response.json() == {"detail": "Memory was modified by another request"}
+	assert read_database(data_file) == []
+
+
+def test_delete_memory_conflict_returns_documented_409_shape(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	def raise_conflict(_memory_id):
+		raise storage.MemoryWriteConflictError("stale write")
+
+	monkeypatch.setattr(app_main, "delete_memory", raise_conflict)
+
+	response = client.delete("/memories/1")
+
+	assert response.status_code == 409
+	assert response.json() == {"detail": "Memory was modified by another request"}
 	assert read_database(data_file) == []
 
 

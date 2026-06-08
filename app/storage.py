@@ -12,6 +12,10 @@ MEMORY_SORT_COLUMNS = {
 }
 
 
+class MemoryWriteConflictError(RuntimeError):
+	"""Raised when a memory write loses an optimistic locking race."""
+
+
 def current_timestamp() -> str:
 	return datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
@@ -281,11 +285,11 @@ def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
 		updated_memory = existing_memory.model_copy(update=update_data)
 		updated_at = current_timestamp()
 		version = existing_memory.version + 1
-		connection.execute(
+		cursor = connection.execute(
 			"""
 			UPDATE memories
 			SET content = ?, tags = ?, updated_at = ?, memory_type = ?, status = ?, version = ?
-			WHERE id = ?
+			WHERE id = ? AND status != 'deleted' AND version = ?
 			""",
 			(
 				updated_memory.content,
@@ -295,8 +299,12 @@ def update_memory(memory_id: int, memory: MemoryUpdate) -> Memory | None:
 				updated_memory.status,
 				version,
 				memory_id,
+				existing_memory.version,
 			),
 		)
+		if cursor.rowcount == 0:
+			connection.rollback()
+			raise MemoryWriteConflictError(f"Memory {memory_id} was modified by another request")
 		connection.commit()
 
 		return updated_memory.model_copy(update={"updated_at": updated_at, "version": version})
@@ -311,14 +319,17 @@ def delete_memory(memory_id: int) -> Memory | None:
 		existing_memory = _row_to_memory(row)
 		updated_at = current_timestamp()
 		version = existing_memory.version + 1
-		connection.execute(
+		cursor = connection.execute(
 			"""
 			UPDATE memories
 			SET status = ?, updated_at = ?, version = ?
-			WHERE id = ?
+			WHERE id = ? AND status != 'deleted' AND version = ?
 			""",
-			("deleted", updated_at, version, memory_id),
+			("deleted", updated_at, version, memory_id, existing_memory.version),
 		)
+		if cursor.rowcount == 0:
+			connection.rollback()
+			raise MemoryWriteConflictError(f"Memory {memory_id} was modified by another request")
 		connection.commit()
 		return existing_memory.model_copy(
 			update={"status": "deleted", "updated_at": updated_at, "version": version}

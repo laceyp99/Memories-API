@@ -1,6 +1,13 @@
+import sqlite3
+
+import pytest
+from helpers.database_helpers import read_database
+
+from app import storage
 from app.schemas import MemoryCreate, MemoryListQuery, MemoryUpdate
 from app.storage import (
 	create_memory,
+	delete_memory,
 	get_memories,
 	get_memories_page,
 	update_memory,
@@ -192,3 +199,105 @@ def test_update_memory_persists_changes(monkeypatch):
 	assert result.status == "invalid"
 	assert result.updated_at == "2026-04-06T14:30:00.000000Z"
 	assert result.version == 2
+
+
+def test_update_memory_raises_conflict_when_row_changes_after_visible_read(data_file, monkeypatch):
+	create_memory(MemoryCreate(content="Initial content", tags=["initial"]))
+	original_fetch = storage._fetch_visible_memory_row
+	did_concurrent_write = False
+
+	def fetch_then_change_row(connection, memory_id):
+		nonlocal did_concurrent_write
+
+		row = original_fetch(connection, memory_id)
+		if row is not None and not did_concurrent_write:
+			did_concurrent_write = True
+			with sqlite3.connect(data_file) as concurrent_connection:
+				concurrent_connection.execute(
+					"""
+					UPDATE memories
+					SET content = ?, updated_at = ?, version = ?
+					WHERE id = ?
+					""",
+					(
+						"Concurrent update",
+						"2026-04-06T14:20:00.000000Z",
+						row["version"] + 1,
+						memory_id,
+					),
+				)
+				concurrent_connection.commit()
+
+		return row
+
+	monkeypatch.setattr(storage, "_fetch_visible_memory_row", fetch_then_change_row)
+	conflict_error = getattr(storage, "MemoryWriteConflictError", Exception)
+
+	with pytest.raises(conflict_error):
+		update_memory(1, MemoryUpdate(content="Stale update"))
+
+	rows = read_database(data_file)
+	assert rows == [
+		{
+			"id": 1,
+			"content": "Concurrent update",
+			"tags": ["initial"],
+			"created_at": rows[0]["created_at"],
+			"updated_at": "2026-04-06T14:20:00.000000Z",
+			"last_accessed_at": None,
+			"memory_type": "fact",
+			"status": "active",
+			"version": 2,
+		}
+	]
+
+
+def test_delete_memory_raises_conflict_when_row_changes_after_visible_read(data_file, monkeypatch):
+	create_memory(MemoryCreate(content="Initial content", tags=["initial"]))
+	original_fetch = storage._fetch_visible_memory_row
+	did_concurrent_write = False
+
+	def fetch_then_change_row(connection, memory_id):
+		nonlocal did_concurrent_write
+
+		row = original_fetch(connection, memory_id)
+		if row is not None and not did_concurrent_write:
+			did_concurrent_write = True
+			with sqlite3.connect(data_file) as concurrent_connection:
+				concurrent_connection.execute(
+					"""
+					UPDATE memories
+					SET content = ?, updated_at = ?, version = ?
+					WHERE id = ?
+					""",
+					(
+						"Concurrent update",
+						"2026-04-06T14:20:00.000000Z",
+						row["version"] + 1,
+						memory_id,
+					),
+				)
+				concurrent_connection.commit()
+
+		return row
+
+	monkeypatch.setattr(storage, "_fetch_visible_memory_row", fetch_then_change_row)
+	conflict_error = getattr(storage, "MemoryWriteConflictError", Exception)
+
+	with pytest.raises(conflict_error):
+		delete_memory(1)
+
+	rows = read_database(data_file)
+	assert rows == [
+		{
+			"id": 1,
+			"content": "Concurrent update",
+			"tags": ["initial"],
+			"created_at": rows[0]["created_at"],
+			"updated_at": "2026-04-06T14:20:00.000000Z",
+			"last_accessed_at": None,
+			"memory_type": "fact",
+			"status": "active",
+			"version": 2,
+		}
+	]
