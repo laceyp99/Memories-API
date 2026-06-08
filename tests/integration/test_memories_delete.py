@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -56,6 +57,68 @@ def test_delete_memory_by_id_returns_deleted_memory_with_full_shape(
 
 	assert response.status_code == 200
 	assert response.json() == expected
+	assert read_database(data_file) == [expected]
+
+
+def test_delete_memory_by_id_stale_write_returns_409(
+	client: TestClient, data_file: Path, monkeypatch
+):
+	create_timestamp = "2026-04-06T14:12:00.000000Z"
+	concurrent_timestamp = "2026-04-06T14:20:00.000000Z"
+	monkeypatch.setattr(storage, "current_timestamp", lambda: create_timestamp)
+
+	create_response = client.post(
+		"/memories",
+		json={
+			"content": "Learning FastAPI testing",
+			"tags": ["python", "api"],
+		},
+	)
+	assert create_response.status_code == 200
+
+	original_fetch = storage._fetch_visible_memory_row
+	did_concurrent_write = False
+
+	def fetch_then_change_row(connection, memory_id):
+		nonlocal did_concurrent_write
+
+		row = original_fetch(connection, memory_id)
+		if row is not None and not did_concurrent_write:
+			did_concurrent_write = True
+			with sqlite3.connect(data_file) as concurrent_connection:
+				concurrent_connection.execute(
+					"""
+					UPDATE memories
+					SET content = ?, updated_at = ?, version = ?
+					WHERE id = ?
+					""",
+					(
+						"Concurrent update",
+						concurrent_timestamp,
+						row["version"] + 1,
+						memory_id,
+					),
+				)
+				concurrent_connection.commit()
+
+		return row
+
+	monkeypatch.setattr(storage, "_fetch_visible_memory_row", fetch_then_change_row)
+
+	response = client.delete("/memories/1")
+
+	expected = expected_memory(
+		1,
+		"Concurrent update",
+		["python", "api"],
+		created_at=create_timestamp,
+		updated_at=concurrent_timestamp,
+		last_accessed_at=None,
+		version=2,
+	)
+
+	assert response.status_code == 409
+	assert response.json() == {"detail": "Memory was modified by another request"}
 	assert read_database(data_file) == [expected]
 
 
