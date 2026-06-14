@@ -7,6 +7,15 @@ from app import main as app_main
 from app import storage
 
 
+def assert_rate_limited(response, limit: int):
+	assert response.status_code == 429
+	assert response.json() == {"detail": "Rate limit exceeded"}
+	assert response.headers["Retry-After"].isdigit()
+	assert response.headers["X-RateLimit-Limit"] == str(limit)
+	assert response.headers["X-RateLimit-Remaining"] == "0"
+	assert response.headers["X-RateLimit-Reset"].isdigit()
+
+
 def test_post_memory_response_matches_public_contract(
 	client: TestClient, data_file: Path, monkeypatch
 ):
@@ -54,6 +63,107 @@ def test_post_memory_rejects_oversized_body_before_json_parsing(monkeypatch, dat
 	assert response.status_code == 413
 	assert response.json() == {"detail": "Request body too large"}
 	assert response.headers["X-Request-Body-Limit"] == "10"
+	assert read_database(data_file) == []
+
+
+def test_post_memory_rate_limit_uses_client_id_identity(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE", "1")
+	test_client = TestClient(app_main.create_app())
+
+	first_response = test_client.post(
+		"/memories",
+		headers={"X-Client-Id": "agent-a"},
+		json={"content": "First write", "tags": ["rate-limit"]},
+	)
+	second_response = test_client.post(
+		"/memories",
+		headers={"X-Client-Id": " agent-a "},
+		json={"content": "Second write", "tags": ["rate-limit"]},
+	)
+	other_client_response = test_client.post(
+		"/memories",
+		headers={"X-Client-Id": "agent-b"},
+		json={"content": "Other client write", "tags": ["rate-limit"]},
+	)
+
+	assert first_response.status_code == 200
+	assert "X-RateLimit-Limit" not in first_response.headers
+	assert_rate_limited(second_response, 1)
+	assert other_client_response.status_code == 200
+	assert len(read_database(data_file)) == 2
+
+
+def test_read_rate_limit_counts_validation_failures(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_RATE_LIMIT_READS_PER_MINUTE", "1")
+	test_client = TestClient(app_main.create_app())
+
+	validation_response = test_client.get(
+		"/memories/not-an-int",
+		headers={"X-Client-Id": "reader"},
+	)
+	limited_response = test_client.get(
+		"/memories",
+		headers={"X-Client-Id": "reader"},
+	)
+
+	assert validation_response.status_code == 422
+	assert_rate_limited(limited_response, 1)
+	assert read_database(data_file) == []
+
+
+def test_batch_create_uses_separate_rate_limit_bucket(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_RATE_LIMIT_BATCH_PER_MINUTE", "1")
+	test_client = TestClient(app_main.create_app())
+
+	first_response = test_client.post(
+		"/memories/batch",
+		json=[{"content": "First batch", "tags": ["batch"]}],
+	)
+	second_response = test_client.post(
+		"/memories/batch",
+		json=[{"content": "Second batch", "tags": ["batch"]}],
+	)
+
+	assert first_response.status_code == 200
+	assert_rate_limited(second_response, 1)
+	assert len(read_database(data_file)) == 1
+
+
+def test_rate_limiting_can_be_disabled(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_RATE_LIMITING_ENABLED", "false")
+	monkeypatch.setenv("MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE", "1")
+	test_client = TestClient(app_main.create_app())
+
+	first_response = test_client.post(
+		"/memories",
+		json={"content": "First write", "tags": ["rate-limit"]},
+	)
+	second_response = test_client.post(
+		"/memories",
+		json={"content": "Second write", "tags": ["rate-limit"]},
+	)
+
+	assert first_response.status_code == 200
+	assert second_response.status_code == 200
+	assert len(read_database(data_file)) == 2
+
+
+def test_body_size_limit_runs_before_rate_limit(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	monkeypatch.setenv("MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE", "1")
+	test_client = TestClient(app_main.create_app())
+
+	oversized_response = test_client.post(
+		"/memories",
+		content="x" * 11,
+		headers={"Content-Type": "application/json"},
+	)
+	first_counted_response = test_client.post("/memories", json={})
+	second_counted_response = test_client.post("/memories", json={})
+
+	assert oversized_response.status_code == 413
+	assert first_counted_response.status_code == 422
+	assert_rate_limited(second_counted_response, 1)
 	assert read_database(data_file) == []
 
 

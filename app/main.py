@@ -11,7 +11,11 @@ from starlette.requests import Request
 
 from app.config import load_browser_client_config, load_safety_config
 from app.mcp_server import mcp
-from app.request_limits import reject_request_body_if_too_large
+from app.request_limits import (
+	FixedWindowRateLimiter,
+	reject_request_body_if_too_large,
+	reject_request_if_rate_limited,
+)
 from app.schemas import (
 	DEFAULT_PAGE_LIMIT,
 	MAX_BATCH_CREATE_MEMORIES,
@@ -89,6 +93,7 @@ def create_app() -> FastAPI:
 	application = FastAPI(title="Memories API", lifespan=lifespan)
 	application.state.browser_client_config = browser_client_config
 	application.state.safety_config = safety_config
+	application.state.rate_limiter = FixedWindowRateLimiter()
 	application.add_middleware(
 		CORSMiddleware,
 		allow_origins=browser_client_config.allowed_origins,
@@ -98,8 +103,16 @@ def create_app() -> FastAPI:
 			"Accept",
 			"MCP-Protocol-Version",
 			"Mcp-Session-Id",
+			"X-Client-Id",
 		],
-		expose_headers=["Mcp-Session-Id"],
+		expose_headers=[
+			"Mcp-Session-Id",
+			"Retry-After",
+			"X-RateLimit-Limit",
+			"X-RateLimit-Remaining",
+			"X-RateLimit-Reset",
+			"X-Request-Body-Limit",
+		],
 	)
 
 	@application.middleware("http")
@@ -110,6 +123,14 @@ def create_app() -> FastAPI:
 		)
 		if body_limit_response is not None:
 			return body_limit_response
+
+		rate_limit_response = reject_request_if_rate_limited(
+			request,
+			application.state.rate_limiter,
+			safety_config,
+		)
+		if rate_limit_response is not None:
+			return rate_limit_response
 
 		origin = request.headers.get("origin")
 		if request.url.path.startswith("/mcp") and origin is not None:
