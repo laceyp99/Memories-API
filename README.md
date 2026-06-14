@@ -133,6 +133,33 @@ For a local Open WebUI setup, two values matter:
 - Browser origin: usually `http://localhost:3000`. This is what goes into `mcp_browser_clients.local.json`.
 - MCP server URL: if Open WebUI runs in Docker, it may need `http://host.docker.internal:8000/mcp` instead of `http://localhost:8000/mcp` to reach the host machine.
 
+### Local safety limits
+
+The HTTP API and MCP streamable HTTP endpoint include conservative local safety limits by default. These are intended to protect a single-user local service from runaway agents, oversized payloads, and accidental request floods. They are not a substitute for authentication or transport security.
+
+Schema and API limits:
+
+- Memory `content` is capped at `8,000` characters.
+- A memory can have at most `20` tags.
+- Each tag is capped at `64` characters.
+- `tag` and `q` retrieval filters are capped at `256` characters.
+- `POST /memories/batch` accepts at most `25` memories.
+
+Runtime limits are configured with environment variables:
+
+| Environment variable | Default | Notes |
+| --- | ---: | --- |
+| `MEMORIES_RATE_LIMITING_ENABLED` | `true` | Set to `false` only as a local debugging escape hatch. |
+| `MEMORIES_RATE_LIMIT_READS_PER_MINUTE` | `120` | Applies to REST memory reads. Reads refresh `last_accessed_at`. |
+| `MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE` | `30` | Applies to REST create, update, and delete requests. |
+| `MEMORIES_RATE_LIMIT_BATCH_PER_MINUTE` | `10` | Applies to `POST /memories/batch`. |
+| `MEMORIES_RATE_LIMIT_MCP_PER_MINUTE` | `240` | Applies to MCP streamable HTTP traffic under `/mcp`. |
+| `MEMORIES_REQUEST_BODY_MAX_BYTES` | `1048576` | Applies to `POST` and `PATCH` REST/MCP HTTP requests with `Content-Length`. |
+
+Rate limiting uses a fixed 60-second in-memory window per process. Clients are identified by a trimmed `X-Client-Id` header, capped at 128 characters, when present; otherwise the client IP is used. A limited request returns `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers.
+
+Request body-size enforcement uses the `Content-Length` header and returns `413` with `X-Request-Body-Limit`. This covers normal local agent clients but does not fully cover oversized chunked or missing-length bodies.
+
 ## Retrieval contract
 
 HTTP and MCP expose one deterministic retrieval contract.
@@ -157,6 +184,7 @@ This project is intended for single-user, local-only use on a trusted machine.
 - Bind the HTTP API and MCP streamable HTTP endpoint to localhost only.
 - Browser-based MCP access is denied by default unless you create a local browser client allowlist file.
 - Browser origins are matched exactly.
+- Default local safety limits reduce accidental runaway behavior but do not make the service safe to expose beyond localhost.
 - Do not expose this service to the internet, a LAN, a shared VM, or a reverse proxy unless you add proper authentication, authorization, and transport security.
 - Treat the SQLite database file and local MCP/client configuration as sensitive local data.
 
