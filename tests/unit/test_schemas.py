@@ -3,6 +3,10 @@ from pydantic import ValidationError
 
 from app.schemas import (
 	DEFAULT_PAGE_LIMIT,
+	MAX_MEMORY_CONTENT_CHARS,
+	MAX_MEMORY_TAG_CHARS,
+	MAX_MEMORY_TAGS,
+	MAX_TEXT_FILTER_CHARS,
 	Memory,
 	MemoryCreate,
 	MemoryListQuery,
@@ -26,9 +30,28 @@ def test_memory_create_rejects_whitespace_only_content():
 	assert "content cannot be empty" in str(error.value)
 
 
+def test_memory_create_rejects_content_over_character_limit():
+	with pytest.raises(ValidationError) as error:
+		MemoryCreate(content="x" * (MAX_MEMORY_CONTENT_CHARS + 1), tags=["note"])
+
+	assert f"content cannot exceed {MAX_MEMORY_CONTENT_CHARS} characters" in str(error.value)
+
+
 def test_validate_tags_value_rejects_blank_tag():
 	with pytest.raises(ValueError, match="tags cannot contain empty strings"):
 		validate_tags_value(["valid", "   "])
+
+
+def test_validate_tags_value_rejects_too_many_tags():
+	with pytest.raises(
+		ValueError, match=f"tags cannot contain more than {MAX_MEMORY_TAGS} entries"
+	):
+		validate_tags_value([f"tag-{index}" for index in range(MAX_MEMORY_TAGS + 1)])
+
+
+def test_validate_tags_value_rejects_tag_over_character_limit():
+	with pytest.raises(ValueError, match=f"tags cannot exceed {MAX_MEMORY_TAG_CHARS} characters"):
+		validate_tags_value(["x" * (MAX_MEMORY_TAG_CHARS + 1)])
 
 
 def test_memory_update_allows_partial_payload():
@@ -43,6 +66,18 @@ def test_memory_update_rejects_extra_fields():
 		MemoryUpdate(status="active", version=2)
 
 	assert "Extra inputs are not permitted" in str(error.value)
+
+
+def test_memory_update_rejects_content_and_tags_over_limits():
+	with pytest.raises(ValidationError) as error:
+		MemoryUpdate(
+			content="x" * (MAX_MEMORY_CONTENT_CHARS + 1),
+			tags=["x" * (MAX_MEMORY_TAG_CHARS + 1)],
+		)
+
+	message = str(error.value)
+	assert f"content cannot exceed {MAX_MEMORY_CONTENT_CHARS} characters" in message
+	assert f"tags cannot exceed {MAX_MEMORY_TAG_CHARS} characters" in message
 
 
 def test_memory_list_query_applies_defaults():
@@ -94,6 +129,13 @@ def test_memory_list_query_rejects_blank_tag_or_query():
 		MemoryListQuery(tag="   ", q=" ")
 
 	assert "filter cannot be empty" in str(error.value)
+
+
+def test_memory_list_query_rejects_text_filters_over_character_limit():
+	with pytest.raises(ValidationError) as error:
+		MemoryListQuery(tag="x" * (MAX_TEXT_FILTER_CHARS + 1), q="y" * (MAX_TEXT_FILTER_CHARS + 1))
+
+	assert f"filter cannot exceed {MAX_TEXT_FILTER_CHARS} characters" in str(error.value)
 
 
 def test_memory_list_response_requires_non_negative_counts():

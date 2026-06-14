@@ -3,13 +3,17 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from starlette.requests import Request
 
 from app.config import load_browser_client_config, load_safety_config
 from app.mcp_server import mcp
 from app.schemas import (
+	DEFAULT_PAGE_LIMIT,
+	MAX_BATCH_CREATE_MEMORIES,
 	Memory,
 	MemoryCreate,
 	MemoryListQuery,
@@ -28,6 +32,43 @@ from app.storage import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _query_validation_errors(error: ValidationError) -> list[dict]:
+	errors: list[dict] = []
+	for validation_error in error.errors():
+		query_error = validation_error.copy()
+		query_error["loc"] = ("query", *validation_error["loc"])
+		if "ctx" in query_error and "error" in query_error["ctx"]:
+			query_error["ctx"] = {
+				**query_error["ctx"],
+				"error": str(query_error["ctx"]["error"]),
+			}
+		errors.append(query_error)
+	return errors
+
+
+def build_memory_list_query(
+	status: str | None = None,
+	memory_type: str | None = None,
+	tag: str | None = None,
+	q: str | None = None,
+	sort: str = "id",
+	limit: int = DEFAULT_PAGE_LIMIT,
+	offset: int = 0,
+) -> MemoryListQuery:
+	try:
+		return MemoryListQuery(
+			status=status,
+			memory_type=memory_type,
+			tag=tag,
+			q=q,
+			sort=sort,
+			limit=limit,
+			offset=offset,
+		)
+	except ValidationError as error:
+		raise RequestValidationError(_query_validation_errors(error)) from error
 
 
 def create_app() -> FastAPI:
@@ -75,10 +116,17 @@ def create_app() -> FastAPI:
 
 	@application.post("/memories/batch")
 	def post_memory_batch(memories: list[MemoryCreate]) -> list[Memory]:
+		if len(memories) > MAX_BATCH_CREATE_MEMORIES:
+			raise HTTPException(
+				status_code=422,
+				detail=f"Batch create is limited to {MAX_BATCH_CREATE_MEMORIES} memories",
+			)
 		return create_memory_batch(memories)
 
 	@application.get("/memories")
-	def list_memories(query: Annotated[MemoryListQuery, Depends()]) -> MemoryListResponse:
+	def list_memories(
+		query: Annotated[MemoryListQuery, Depends(build_memory_list_query)],
+	) -> MemoryListResponse:
 		paged_memories, total = get_memories_page(query)
 		items = refresh_memories_last_accessed(paged_memories)
 

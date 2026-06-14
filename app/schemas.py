@@ -11,6 +11,11 @@ ALLOWED_MEMORY_TYPES = {
 ALLOWED_STATUSES = {"active", "invalid", "deleted"}
 DEFAULT_PAGE_LIMIT = 10
 MAX_PAGE_LIMIT = 100
+MAX_MEMORY_CONTENT_CHARS = 8_000
+MAX_MEMORY_TAGS = 20
+MAX_MEMORY_TAG_CHARS = 64
+MAX_TEXT_FILTER_CHARS = 256
+MAX_BATCH_CREATE_MEMORIES = 25
 ALLOWED_MEMORY_SORTS = {"id", "created_at", "updated_at", "last_accessed_at"}
 
 
@@ -19,6 +24,8 @@ def validate_content_value(value: str) -> str:
 		raise ValueError("content must be a string")
 	if not value.strip():
 		raise ValueError("content cannot be empty")
+	if len(value) > MAX_MEMORY_CONTENT_CHARS:
+		raise ValueError(f"content cannot exceed {MAX_MEMORY_CONTENT_CHARS} characters")
 	return value
 
 
@@ -27,11 +34,15 @@ def validate_tags_value(value: list[str]) -> list[str]:
 		raise ValueError("tags must be a list of strings")
 	if not value:
 		raise ValueError("tags cannot be empty")
+	if len(value) > MAX_MEMORY_TAGS:
+		raise ValueError(f"tags cannot contain more than {MAX_MEMORY_TAGS} entries")
 	for tag in value:
 		if not isinstance(tag, str):
 			raise ValueError("each tag must be a string")
 		if not tag.strip():
 			raise ValueError("tags cannot contain empty strings")
+		if len(tag) > MAX_MEMORY_TAG_CHARS:
+			raise ValueError(f"tags cannot exceed {MAX_MEMORY_TAG_CHARS} characters")
 	return value
 
 
@@ -164,6 +175,8 @@ class MemoryListQuery(BaseModel):
 		normalized_value = value.strip()
 		if not normalized_value:
 			raise ValueError("filter cannot be empty")
+		if len(normalized_value) > MAX_TEXT_FILTER_CHARS:
+			raise ValueError(f"filter cannot exceed {MAX_TEXT_FILTER_CHARS} characters")
 		return normalized_value
 
 
