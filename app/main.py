@@ -11,6 +11,7 @@ from starlette.requests import Request
 
 from app.config import load_browser_client_config, load_safety_config
 from app.mcp_server import mcp
+from app.request_limits import reject_request_body_if_too_large
 from app.schemas import (
 	DEFAULT_PAGE_LIMIT,
 	MAX_BATCH_CREATE_MEMORIES,
@@ -102,7 +103,14 @@ def create_app() -> FastAPI:
 	)
 
 	@application.middleware("http")
-	async def validate_mcp_browser_origin(request: Request, call_next):
+	async def enforce_request_safety(request: Request, call_next):
+		body_limit_response = reject_request_body_if_too_large(
+			request,
+			safety_config.request_body_max_bytes,
+		)
+		if body_limit_response is not None:
+			return body_limit_response
+
 		origin = request.headers.get("origin")
 		if request.url.path.startswith("/mcp") and origin is not None:
 			if origin not in browser_client_config.allowed_origins:

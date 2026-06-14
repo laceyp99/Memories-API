@@ -56,6 +56,21 @@ def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):
 	assert response.status_code != 404
 
 
+def test_mcp_http_rejects_oversized_body_before_transport_parsing(monkeypatch):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	client = TestClient(main_module.create_app())
+
+	response = client.post(
+		"/mcp",
+		content="x" * 11,
+		headers={"Content-Type": "application/json"},
+	)
+
+	assert response.status_code == 413
+	assert response.json() == {"detail": "Request body too large"}
+	assert response.headers["X-Request-Body-Limit"] == "10"
+
+
 def test_mcp_http_allows_valid_origin_when_another_browser_client_is_invalid(
 	monkeypatch, tmp_path: Path
 ):

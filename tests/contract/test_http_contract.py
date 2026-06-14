@@ -41,6 +41,38 @@ def test_post_memory_response_matches_public_contract(
 	assert read_database(data_file) == [body]
 
 
+def test_post_memory_rejects_oversized_body_before_json_parsing(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	test_client = TestClient(app_main.create_app())
+
+	response = test_client.post(
+		"/memories",
+		content="x" * 11,
+		headers={"Content-Type": "application/json"},
+	)
+
+	assert response.status_code == 413
+	assert response.json() == {"detail": "Request body too large"}
+	assert response.headers["X-Request-Body-Limit"] == "10"
+	assert read_database(data_file) == []
+
+
+def test_patch_memory_rejects_oversized_body_before_json_parsing(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	test_client = TestClient(app_main.create_app())
+
+	response = test_client.patch(
+		"/memories/1",
+		content="x" * 11,
+		headers={"Content-Type": "application/json"},
+	)
+
+	assert response.status_code == 413
+	assert response.json() == {"detail": "Request body too large"}
+	assert response.headers["X-Request-Body-Limit"] == "10"
+	assert read_database(data_file) == []
+
+
 def test_missing_memory_returns_documented_404_shape(client: TestClient, data_file: Path):
 	response = client.get("/memories/999")
 
