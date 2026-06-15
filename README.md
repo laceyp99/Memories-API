@@ -133,6 +133,22 @@ For a local Open WebUI setup, two values matter:
 - Browser origin: usually `http://localhost:3000`. This is what goes into `mcp_browser_clients.local.json`.
 - MCP server URL: if Open WebUI runs in Docker, it may need `http://host.docker.internal:8000/mcp` instead of `http://localhost:8000/mcp` to reach the host machine.
 
+## Retrieval contract
+
+HTTP and MCP expose one deterministic retrieval contract.
+
+- HTTP uses `GET /memories`.
+- MCP uses `prime_memory_context` for startup recall and `search_memories` for targeted recall.
+- Both accept `status`, `memory_type`, `tag`, `q`, `sort`, `limit`, and `offset`.
+- Both return `items`, `total`, `limit`, `offset`, and `has_more`.
+- `tag` matches exactly.
+- `q` is case-insensitive lexical matching over `content` and tags, not semantic search.
+- Filters compose with `AND`.
+- Sort keys are `id`, `created_at`, `updated_at`, and `last_accessed_at`; timestamp sorts are descending with `id DESC` as a tie-breaker.
+- `last_accessed_at` is refreshed only for rows actually returned by `GET /memories/{id}`, `GET /memories`, `search_memories`, and `prime_memory_context`.
+
+That keeps retrieval easy to test and consistent across HTTP and MCP.
+
 ### Local safety limits
 
 The HTTP API and MCP streamable HTTP endpoint include conservative local safety limits by default. These are intended to protect a single-user local service from runaway agents, oversized payloads, and accidental request floods. They are not a substitute for authentication or transport security.
@@ -160,21 +176,6 @@ Rate limiting uses a fixed 60-second in-memory window per process. Clients are i
 
 Request body-size enforcement uses the `Content-Length` header and returns `413` with `X-Request-Body-Limit`. This covers normal local agent clients but does not fully cover oversized chunked or missing-length bodies.
 
-## Retrieval contract
-
-HTTP and MCP expose one deterministic retrieval contract.
-
-- HTTP uses `GET /memories`.
-- MCP uses `prime_memory_context` for startup recall and `search_memories` for targeted recall.
-- Both accept `status`, `memory_type`, `tag`, `q`, `sort`, `limit`, and `offset`.
-- Both return `items`, `total`, `limit`, `offset`, and `has_more`.
-- `tag` matches exactly.
-- `q` is case-insensitive lexical matching over `content` and tags, not semantic search.
-- Filters compose with `AND`.
-- Sort keys are `id`, `created_at`, `updated_at`, and `last_accessed_at`; timestamp sorts are descending with `id DESC` as a tie-breaker.
-- `last_accessed_at` is refreshed only for rows actually returned by `GET /memories/{id}`, `GET /memories`, `search_memories`, and `prime_memory_context`.
-
-That keeps retrieval easy to test and consistent across HTTP and MCP.
 
 ## Security
 
