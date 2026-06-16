@@ -176,6 +176,8 @@ Rate limiting uses a fixed 60-second in-memory window per process. Clients are i
 
 Request body-size enforcement uses the `Content-Length` header and returns `413` with `X-Request-Body-Limit`. This covers normal local agent clients but does not fully cover oversized chunked or missing-length bodies.
 
+For behavioral load checks, use the standalone stress harness at [scripts/rate_limit_stress.py](scripts/rate_limit_stress.py). It exercises mixed agent usage, fast bursts, concurrent floods, and two-agent isolation across REST and MCP surfaces, then writes an HTML report. See [scripts/README.md](scripts/README.md) for setup, tuning options, and result interpretation.
+
 
 ## Security
 
