@@ -25,3 +25,6 @@ mcp_browser_clients.local.json
 *.sqlite-wal
 *.sqlite-shm
 data.db
+
+# Generated stress reports
+scripts/rate_limit_report.html
