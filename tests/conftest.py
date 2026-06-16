@@ -3,12 +3,12 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import create_app
 
 
 @pytest.fixture
-def client() -> TestClient:
-	return TestClient(app)
+def client(data_file: Path) -> TestClient:
+	return TestClient(create_app())
 
 
 @pytest.fixture(autouse=True)

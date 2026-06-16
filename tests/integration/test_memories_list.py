@@ -5,6 +5,7 @@ from helpers.database_helpers import read_database
 from helpers.memory_builders import expected_memory
 
 from app import storage
+from app.schemas import MAX_TEXT_FILTER_CHARS
 
 DEFAULT_LIMIT = 10
 
@@ -331,6 +332,26 @@ def test_get_memories_filters_by_free_text_query_case_insensitively(
 			last_accessed_at=None,
 		),
 	]
+
+
+def test_get_memories_rejects_text_filters_over_character_limit(
+	client: TestClient, data_file: Path
+):
+	response = client.get(
+		"/memories",
+		params={
+			"tag": "x" * (MAX_TEXT_FILTER_CHARS + 1),
+			"q": "y" * (MAX_TEXT_FILTER_CHARS + 1),
+		},
+	)
+
+	assert response.status_code == 422
+	assert any(
+		error["loc"] == ["query", "tag"]
+		and f"filter cannot exceed {MAX_TEXT_FILTER_CHARS} characters" in error["msg"]
+		for error in response.json()["detail"]
+	)
+	assert read_database(data_file) == []
 
 
 def test_get_memories_supports_explicit_sort_options_with_stable_tiebreaker(

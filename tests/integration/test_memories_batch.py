@@ -5,6 +5,7 @@ from helpers.database_helpers import read_database
 from helpers.memory_builders import expected_memory
 
 from app import storage
+from app.schemas import MAX_BATCH_CREATE_MEMORIES
 
 
 def test_post_memory_batch_returns_created_memories_with_defaults(
@@ -123,5 +124,24 @@ def test_post_memory_batch_returns_400_for_invalid_input(client: TestClient, dat
 				"type": "missing",
 			}
 		]
+	}
+	assert read_database(data_file) == []
+
+
+def test_post_memory_batch_rejects_over_batch_limit(client: TestClient, data_file: Path):
+	response = client.post(
+		"/memories/batch",
+		json=[
+			{
+				"content": f"Memory {index}",
+				"tags": [f"tag-{index}"],
+			}
+			for index in range(MAX_BATCH_CREATE_MEMORIES + 1)
+		],
+	)
+
+	assert response.status_code == 422
+	assert response.json() == {
+		"detail": f"Batch create is limited to {MAX_BATCH_CREATE_MEMORIES} memories"
 	}
 	assert read_database(data_file) == []

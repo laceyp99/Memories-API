@@ -5,6 +5,7 @@ from helpers.database_helpers import read_database
 from helpers.memory_builders import expected_memory
 
 from app import storage
+from app.schemas import MAX_MEMORY_CONTENT_CHARS, MAX_MEMORY_TAG_CHARS, MAX_MEMORY_TAGS
 
 
 def test_post_memory_returns_created_memory_with_defaults(
@@ -180,6 +181,43 @@ def test_post_memory_rejects_invalid_status(client: TestClient, data_file: Path)
 	assert any(
 		error["loc"] == ["body", "status"] and "status must be one of" in error["msg"]
 		for error in body["detail"]
+	)
+	assert read_database(data_file) == []
+
+
+def test_post_memory_rejects_content_over_character_limit(client: TestClient, data_file: Path):
+	response = client.post(
+		"/memories",
+		json={
+			"content": "x" * (MAX_MEMORY_CONTENT_CHARS + 1),
+			"tags": ["note"],
+		},
+	)
+
+	assert response.status_code == 422
+	assert any(
+		error["loc"] == ["body", "content"]
+		and f"content cannot exceed {MAX_MEMORY_CONTENT_CHARS} characters" in error["msg"]
+		for error in response.json()["detail"]
+	)
+	assert read_database(data_file) == []
+
+
+def test_post_memory_rejects_tag_limits(client: TestClient, data_file: Path):
+	response = client.post(
+		"/memories",
+		json={
+			"content": "Learning FastAPI testing",
+			"tags": [f"tag-{index}" for index in range(MAX_MEMORY_TAGS)]
+			+ ["x" * (MAX_MEMORY_TAG_CHARS + 1)],
+		},
+	)
+
+	assert response.status_code == 422
+	assert any(
+		error["loc"] == ["body", "tags"]
+		and f"tags cannot contain more than {MAX_MEMORY_TAGS} entries" in error["msg"]
+		for error in response.json()["detail"]
 	)
 	assert read_database(data_file) == []
 
