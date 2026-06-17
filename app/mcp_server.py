@@ -3,6 +3,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.prompts.base import AssistantMessage
 
+from app.db import init_db
 from app.schemas import MemoryCreate, MemoryListQuery, MemoryListResponse, MemoryUpdate
 from app.storage import (
 	create_memory,
@@ -234,6 +235,7 @@ def inspect_memory(memory_id: int) -> dict:
 
 
 def run_stdio() -> None:
+	init_db()
 	mcp.run()
 
 

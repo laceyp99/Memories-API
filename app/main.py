@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from app.config import load_browser_client_config, load_safety_config
+from app.db import init_db
 from app.mcp_server import mcp
 from app.request_limits import (
 	FixedWindowRateLimiter,
@@ -86,6 +87,8 @@ def create_app() -> FastAPI:
 			logger.warning(warning_message)
 		for warning_message in safety_config.warnings:
 			logger.warning(warning_message)
+
+		init_db()
 
 		async with mcp.session_manager.run():
 			yield
