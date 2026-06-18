@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from app.config import load_browser_client_config, load_safety_config
-from app.db import init_db
+from app.db import check_database_readiness, init_db
 from app.mcp_server import mcp
 from app.request_limits import (
 	FixedWindowRateLimiter,
@@ -141,6 +141,21 @@ def create_app() -> FastAPI:
 				return JSONResponse(status_code=403, content={"detail": "Origin not allowed"})
 
 		return await call_next(request)
+
+	@application.get("/health")
+	def health_check() -> dict[str, str]:
+		return {"status": "ok"}
+
+	@application.get("/ready")
+	def readiness_check():
+		checks = check_database_readiness()
+		if all(status == "ok" for status in checks.values()):
+			return {"status": "ready", "checks": checks}
+
+		return JSONResponse(
+			status_code=503,
+			content={"status": "not_ready", "checks": checks},
+		)
 
 	@application.post("/memories")
 	def post_memory(memory: MemoryCreate) -> Memory:

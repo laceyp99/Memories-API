@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -14,6 +15,41 @@ def assert_rate_limited(response, limit: int):
 	assert response.headers["X-RateLimit-Limit"] == str(limit)
 	assert response.headers["X-RateLimit-Remaining"] == "0"
 	assert response.headers["X-RateLimit-Reset"].isdigit()
+
+
+def test_health_check_returns_ping_without_initializing_database(
+	client: TestClient, data_file: Path
+):
+	response = client.get("/health")
+
+	assert response.status_code == 200
+	assert response.json() == {"status": "ok"}
+	assert not data_file.exists()
+
+
+def test_readiness_check_initializes_schema_without_memory_rows(
+	client: TestClient, data_file: Path
+):
+	response = client.get("/ready")
+
+	assert response.status_code == 200
+	assert response.json() == {
+		"status": "ready",
+		"checks": {
+			"database": "ok",
+			"memories_table": "ok",
+		},
+	}
+	with sqlite3.connect(data_file) as connection:
+		table = connection.execute(
+			"""
+			SELECT 1
+			FROM sqlite_master
+			WHERE type = 'table' AND name = 'memories'
+			"""
+		).fetchone()
+	assert table is not None
+	assert read_database(data_file) == []
 
 
 def test_post_memory_response_matches_public_contract(
