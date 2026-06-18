@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from helpers.database_helpers import read_database
@@ -15,6 +16,10 @@ def assert_rate_limited(response, limit: int):
 	assert response.headers["X-RateLimit-Limit"] == str(limit)
 	assert response.headers["X-RateLimit-Remaining"] == "0"
 	assert response.headers["X-RateLimit-Reset"].isdigit()
+
+
+def assert_uuid(value: str):
+	UUID(value)
 
 
 def test_health_check_returns_ping_without_initializing_database(
@@ -50,6 +55,21 @@ def test_readiness_check_initializes_schema_without_memory_rows(
 		).fetchone()
 	assert table is not None
 	assert read_database(data_file) == []
+
+
+def test_request_id_echoes_valid_client_header(client: TestClient):
+	response = client.get("/health", headers={"X-Request-Id": "agent.123:request-456"})
+
+	assert response.status_code == 200
+	assert response.headers["X-Request-Id"] == "agent.123:request-456"
+
+
+def test_request_id_replaces_invalid_client_header(client: TestClient):
+	response = client.get("/health", headers={"X-Request-Id": "bad request id"})
+
+	assert response.status_code == 200
+	assert response.headers["X-Request-Id"] != "bad request id"
+	assert_uuid(response.headers["X-Request-Id"])
 
 
 def test_post_memory_response_matches_public_contract(
@@ -99,6 +119,7 @@ def test_post_memory_rejects_oversized_body_before_json_parsing(monkeypatch, dat
 	assert response.status_code == 413
 	assert response.json() == {"detail": "Request body too large"}
 	assert response.headers["X-Request-Body-Limit"] == "10"
+	assert_uuid(response.headers["X-Request-Id"])
 	assert read_database(data_file) == []
 
 
@@ -125,6 +146,7 @@ def test_post_memory_rate_limit_uses_client_id_identity(monkeypatch, data_file: 
 	assert first_response.status_code == 200
 	assert "X-RateLimit-Limit" not in first_response.headers
 	assert_rate_limited(second_response, 1)
+	assert_uuid(second_response.headers["X-Request-Id"])
 	assert other_client_response.status_code == 200
 	assert len(read_database(data_file)) == 2
 

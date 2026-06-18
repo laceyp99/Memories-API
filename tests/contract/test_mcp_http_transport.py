@@ -1,12 +1,17 @@
 import importlib
 import json
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
 import app.main as main_module
 import app.mcp_server as mcp_server_module
 from app import config as config_module
+
+
+def assert_uuid(value: str):
+	UUID(value)
 
 
 def build_client_with_fresh_mcp():
@@ -44,6 +49,7 @@ def test_mcp_http_rejects_browser_requests_when_no_local_allowlist_exists(
 
 	assert response.status_code == 403
 	assert response.json() == {"detail": "Origin not allowed"}
+	assert_uuid(response.headers["X-Request-Id"])
 
 
 def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):
@@ -63,6 +69,7 @@ def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):
 	expose_headers = response.headers["access-control-expose-headers"]
 	assert "X-RateLimit-Limit" in expose_headers
 	assert "X-Request-Body-Limit" in expose_headers
+	assert "X-Request-Id" in expose_headers
 
 
 def test_mcp_http_rejects_oversized_body_before_transport_parsing(monkeypatch):
@@ -78,6 +85,7 @@ def test_mcp_http_rejects_oversized_body_before_transport_parsing(monkeypatch):
 	assert response.status_code == 413
 	assert response.json() == {"detail": "Request body too large"}
 	assert response.headers["X-Request-Body-Limit"] == "10"
+	assert_uuid(response.headers["X-Request-Id"])
 
 
 def test_mcp_http_rate_limit_returns_stable_429(monkeypatch):
@@ -94,6 +102,7 @@ def test_mcp_http_rate_limit_returns_stable_429(monkeypatch):
 	assert second_response.headers["X-RateLimit-Limit"] == "1"
 	assert second_response.headers["X-RateLimit-Remaining"] == "0"
 	assert second_response.headers["X-RateLimit-Reset"].isdigit()
+	assert_uuid(second_response.headers["X-Request-Id"])
 
 
 def test_mcp_http_allows_valid_origin_when_another_browser_client_is_invalid(
@@ -128,7 +137,7 @@ def test_mcp_http_allows_mcp_request_headers_for_allowed_origin(monkeypatch, tmp
 			headers={
 				"Origin": "http://localhost:3000",
 				"Access-Control-Request-Method": "POST",
-				"Access-Control-Request-Headers": "MCP-Protocol-Version,Mcp-Session-Id,X-Client-Id",
+				"Access-Control-Request-Headers": "MCP-Protocol-Version,Mcp-Session-Id,X-Client-Id,X-Request-Id",
 			},
 		)
 
@@ -137,3 +146,4 @@ def test_mcp_http_allows_mcp_request_headers_for_allowed_origin(monkeypatch, tmp
 	assert "MCP-Protocol-Version" in response.headers["access-control-allow-headers"]
 	assert "Mcp-Session-Id" in response.headers["access-control-allow-headers"]
 	assert "X-Client-Id" in response.headers["access-control-allow-headers"]
+	assert "X-Request-Id" in response.headers["access-control-allow-headers"]

@@ -12,6 +12,7 @@ from starlette.requests import Request
 from app.config import load_browser_client_config, load_safety_config
 from app.db import check_database_readiness, init_db
 from app.mcp_server import mcp
+from app.request_context import REQUEST_ID_HEADER, resolve_request_id, set_request_id_header
 from app.request_limits import (
 	FixedWindowRateLimiter,
 	reject_request_body_if_too_large,
@@ -107,6 +108,7 @@ def create_app() -> FastAPI:
 			"MCP-Protocol-Version",
 			"Mcp-Session-Id",
 			"X-Client-Id",
+			REQUEST_ID_HEADER,
 		],
 		expose_headers=[
 			"Mcp-Session-Id",
@@ -115,17 +117,21 @@ def create_app() -> FastAPI:
 			"X-RateLimit-Remaining",
 			"X-RateLimit-Reset",
 			"X-Request-Body-Limit",
+			REQUEST_ID_HEADER,
 		],
 	)
 
 	@application.middleware("http")
 	async def enforce_request_safety(request: Request, call_next):
+		request_id = resolve_request_id(request.headers.get(REQUEST_ID_HEADER))
+		request.state.request_id = request_id
+
 		body_limit_response = reject_request_body_if_too_large(
 			request,
 			safety_config.request_body_max_bytes,
 		)
 		if body_limit_response is not None:
-			return body_limit_response
+			return set_request_id_header(body_limit_response, request_id)
 
 		rate_limit_response = reject_request_if_rate_limited(
 			request,
@@ -133,14 +139,18 @@ def create_app() -> FastAPI:
 			safety_config,
 		)
 		if rate_limit_response is not None:
-			return rate_limit_response
+			return set_request_id_header(rate_limit_response, request_id)
 
 		origin = request.headers.get("origin")
 		if request.url.path.startswith("/mcp") and origin is not None:
 			if origin not in browser_client_config.allowed_origins:
-				return JSONResponse(status_code=403, content={"detail": "Origin not allowed"})
+				return set_request_id_header(
+					JSONResponse(status_code=403, content={"detail": "Origin not allowed"}),
+					request_id,
+				)
 
-		return await call_next(request)
+		response = await call_next(request)
+		return set_request_id_header(response, request_id)
 
 	@application.get("/health")
 	def health_check() -> dict[str, str]:
