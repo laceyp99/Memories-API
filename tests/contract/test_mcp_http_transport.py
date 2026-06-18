@@ -1,5 +1,6 @@
 import importlib
 import json
+import logging
 from pathlib import Path
 from uuid import UUID
 
@@ -9,9 +10,25 @@ import app.main as main_module
 import app.mcp_server as mcp_server_module
 from app import config as config_module
 
+REQUEST_LOG_FIELDS = {"method", "path", "status", "duration_ms", "request_id"}
+
 
 def assert_uuid(value: str):
 	UUID(value)
+
+
+def request_log_payloads(caplog):
+	payloads = []
+	for record in caplog.records:
+		if record.name != "app.main":
+			continue
+		try:
+			payload = json.loads(record.message)
+		except json.JSONDecodeError:
+			continue
+		if set(payload) == REQUEST_LOG_FIELDS:
+			payloads.append((record, payload))
+	return payloads
 
 
 def build_client_with_fresh_mcp():
@@ -38,18 +55,31 @@ def build_client_without_browser_config(monkeypatch, tmp_path: Path):
 
 
 def test_mcp_http_rejects_browser_requests_when_no_local_allowlist_exists(
-	monkeypatch, tmp_path: Path
+	monkeypatch, tmp_path: Path, caplog
 ):
+	caplog.set_level(logging.INFO, logger="app.main")
+
 	with build_client_without_browser_config(monkeypatch, tmp_path) as client:
 		response = client.post(
 			"/mcp",
-			headers={"Origin": "http://localhost:3000"},
+			headers={
+				"Origin": "http://localhost:3000",
+				"X-Request-Id": "mcp-origin-check",
+			},
 			json={},
 		)
 
 	assert response.status_code == 403
 	assert response.json() == {"detail": "Origin not allowed"}
-	assert_uuid(response.headers["X-Request-Id"])
+	assert response.headers["X-Request-Id"] == "mcp-origin-check"
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "POST"
+	assert payload["path"] == "/mcp"
+	assert payload["status"] == 403
+	assert payload["request_id"] == "mcp-origin-check"
 
 
 def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):

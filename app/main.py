@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -18,6 +19,7 @@ from app.request_limits import (
 	reject_request_body_if_too_large,
 	reject_request_if_rate_limited,
 )
+from app.request_logging import current_duration_ms, log_http_request
 from app.schemas import (
 	DEFAULT_PAGE_LIMIT,
 	MAX_BATCH_CREATE_MEMORIES,
@@ -123,15 +125,26 @@ def create_app() -> FastAPI:
 
 	@application.middleware("http")
 	async def enforce_request_safety(request: Request, call_next):
+		start_time = time.perf_counter()
 		request_id = resolve_request_id(request.headers.get(REQUEST_ID_HEADER))
 		request.state.request_id = request_id
+
+		def complete_response(response):
+			log_http_request(
+				logger,
+				request,
+				status_code=response.status_code,
+				duration_ms=current_duration_ms(start_time),
+				request_id=request_id,
+			)
+			return set_request_id_header(response, request_id)
 
 		body_limit_response = reject_request_body_if_too_large(
 			request,
 			safety_config.request_body_max_bytes,
 		)
 		if body_limit_response is not None:
-			return set_request_id_header(body_limit_response, request_id)
+			return complete_response(body_limit_response)
 
 		rate_limit_response = reject_request_if_rate_limited(
 			request,
@@ -139,18 +152,28 @@ def create_app() -> FastAPI:
 			safety_config,
 		)
 		if rate_limit_response is not None:
-			return set_request_id_header(rate_limit_response, request_id)
+			return complete_response(rate_limit_response)
 
 		origin = request.headers.get("origin")
 		if request.url.path.startswith("/mcp") and origin is not None:
 			if origin not in browser_client_config.allowed_origins:
-				return set_request_id_header(
+				return complete_response(
 					JSONResponse(status_code=403, content={"detail": "Origin not allowed"}),
-					request_id,
 				)
 
-		response = await call_next(request)
-		return set_request_id_header(response, request_id)
+		try:
+			response = await call_next(request)
+		except Exception:
+			log_http_request(
+				logger,
+				request,
+				status_code=500,
+				duration_ms=current_duration_ms(start_time),
+				request_id=request_id,
+			)
+			raise
+
+		return complete_response(response)
 
 	@application.get("/health")
 	def health_check() -> dict[str, str]:

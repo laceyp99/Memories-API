@@ -1,3 +1,5 @@
+import json
+import logging
 import sqlite3
 from pathlib import Path
 from uuid import UUID
@@ -7,6 +9,8 @@ from helpers.database_helpers import read_database
 
 from app import main as app_main
 from app import storage
+
+REQUEST_LOG_FIELDS = {"method", "path", "status", "duration_ms", "request_id"}
 
 
 def assert_rate_limited(response, limit: int):
@@ -20,6 +24,20 @@ def assert_rate_limited(response, limit: int):
 
 def assert_uuid(value: str):
 	UUID(value)
+
+
+def request_log_payloads(caplog):
+	payloads = []
+	for record in caplog.records:
+		if record.name != "app.main":
+			continue
+		try:
+			payload = json.loads(record.message)
+		except json.JSONDecodeError:
+			continue
+		if set(payload) == REQUEST_LOG_FIELDS:
+			payloads.append((record, payload))
+	return payloads
 
 
 def test_health_check_returns_ping_without_initializing_database(
@@ -72,6 +90,40 @@ def test_request_id_replaces_invalid_client_header(client: TestClient):
 	assert_uuid(response.headers["X-Request-Id"])
 
 
+def test_memory_request_logs_json_record_at_info(client: TestClient, caplog):
+	caplog.set_level(logging.INFO, logger="app.main")
+
+	response = client.get("/memories", headers={"X-Request-Id": "list-request"})
+
+	assert response.status_code == 200
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "GET"
+	assert payload["path"] == "/memories"
+	assert payload["status"] == 200
+	assert isinstance(payload["duration_ms"], float)
+	assert payload["request_id"] == "list-request"
+
+
+def test_health_check_logs_light_json_record_at_debug(client: TestClient, caplog):
+	caplog.set_level(logging.DEBUG, logger="app.main")
+
+	response = client.get("/health", headers={"X-Request-Id": "probe-request"})
+
+	assert response.status_code == 200
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.DEBUG
+	assert payload["method"] == "GET"
+	assert payload["path"] == "/health"
+	assert payload["status"] == 200
+	assert isinstance(payload["duration_ms"], float)
+	assert payload["request_id"] == "probe-request"
+
+
 def test_post_memory_response_matches_public_contract(
 	client: TestClient, data_file: Path, monkeypatch
 ):
@@ -106,20 +158,31 @@ def test_post_memory_response_matches_public_contract(
 	assert read_database(data_file) == [body]
 
 
-def test_post_memory_rejects_oversized_body_before_json_parsing(monkeypatch, data_file: Path):
+def test_post_memory_rejects_oversized_body_before_json_parsing(
+	monkeypatch, data_file: Path, caplog
+):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	caplog.set_level(logging.INFO, logger="app.main")
 	test_client = TestClient(app_main.create_app())
 
 	response = test_client.post(
 		"/memories",
 		content="x" * 11,
-		headers={"Content-Type": "application/json"},
+		headers={"Content-Type": "application/json", "X-Request-Id": "oversized-request"},
 	)
 
 	assert response.status_code == 413
 	assert response.json() == {"detail": "Request body too large"}
 	assert response.headers["X-Request-Body-Limit"] == "10"
-	assert_uuid(response.headers["X-Request-Id"])
+	assert response.headers["X-Request-Id"] == "oversized-request"
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "POST"
+	assert payload["path"] == "/memories"
+	assert payload["status"] == 413
+	assert payload["request_id"] == "oversized-request"
 	assert read_database(data_file) == []
 
 
