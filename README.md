@@ -23,6 +23,8 @@ Interactive docs are available at http://127.0.0.1:8000/docs
 The running app exposes:
 
 - REST API at `http://127.0.0.1:8000/memories`
+- Health endpoint at `http://127.0.0.1:8000/health`
+- Readiness endpoint at `http://127.0.0.1:8000/ready`
 - MCP streamable HTTP endpoint at `http://127.0.0.1:8000/mcp`
 - MCP stdio entrypoint with `python -m app.mcp_server`
 
@@ -149,6 +151,41 @@ HTTP and MCP expose one deterministic retrieval contract.
 
 That keeps retrieval easy to test and consistent across HTTP and MCP.
 
+### Operational endpoints and request IDs
+
+The API includes lightweight local operational endpoints:
+
+- `GET /health` returns `{"status": "ok"}` as a side-effect-free ping. It does not read memories or refresh `last_accessed_at`.
+- `GET /ready` checks that SQLite is reachable and the `memories` table exists. It may initialize the local DB/schema on first run, but it does not create, read, or update memory rows.
+
+Readiness responses include non-sensitive check status only. A ready response returns:
+
+```json
+{
+	"status": "ready",
+	"checks": {
+		"database": "ok",
+		"memories_table": "ok"
+	}
+}
+```
+
+If a readiness check fails, the endpoint returns `503` with `status` set to `not_ready` and failed checks marked as `failed`. Responses do not include local database paths, raw exception text, or environment-derived file locations.
+
+Every HTTP response includes `X-Request-Id`, including REST responses, MCP streamable HTTP responses, and middleware-generated rejections such as `413`, `429`, and MCP-origin `403`. If a request sends `X-Request-Id` and it matches `^[A-Za-z0-9._:-]{1,128}$`, the server echoes it. Missing or invalid values are replaced with a server-generated UUID.
+
+The app emits one JSON request log record per HTTP request. Normal REST and MCP HTTP requests are logged at `INFO`; `/health` and `/ready` are logged at `DEBUG` to keep probe traffic quieter. Request log records contain only:
+
+```json
+{
+	"method": "GET",
+	"path": "/memories",
+	"status": 200,
+	"duration_ms": 1.23,
+	"request_id": "example-request-id"
+}
+```
+
 ### Local safety limits
 
 The HTTP API and MCP streamable HTTP endpoint include conservative local safety limits by default. These are intended to protect a single-user local service from runaway agents, oversized payloads, and accidental request floods. They are not a substitute for authentication or transport security.
@@ -173,6 +210,8 @@ Runtime limits are configured with environment variables:
 | `MEMORIES_REQUEST_BODY_MAX_BYTES` | `1048576` | Applies to `POST` and `PATCH` REST/MCP HTTP requests with `Content-Length`. |
 
 Rate limiting uses a fixed 60-second in-memory window per process. Clients are identified by a trimmed `X-Client-Id` header, capped at 128 characters, when present; otherwise the client IP is used. A limited request returns `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers.
+
+`/health` and `/ready` are exempt from normal rate limiting.
 
 Request body-size enforcement uses the `Content-Length` header and returns `413` with `X-Request-Body-Limit`. This covers normal local agent clients but does not fully cover oversized chunked or missing-length bodies.
 
