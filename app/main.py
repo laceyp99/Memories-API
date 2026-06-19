@@ -100,6 +100,19 @@ def create_app() -> FastAPI:
 	application.state.browser_client_config = browser_client_config
 	application.state.safety_config = safety_config
 	application.state.rate_limiter = FixedWindowRateLimiter()
+
+	@application.exception_handler(Exception)
+	async def unhandled_exception_response(request: Request, _error: Exception) -> JSONResponse:
+		request_id = getattr(
+			request.state,
+			"request_id",
+			resolve_request_id(request.headers.get(REQUEST_ID_HEADER)),
+		)
+		return set_request_id_header(
+			JSONResponse(status_code=500, content={"detail": "Internal Server Error"}),
+			request_id,
+		)
+
 	application.add_middleware(
 		CORSMiddleware,
 		allow_origins=browser_client_config.allowed_origins,

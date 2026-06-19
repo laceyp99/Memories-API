@@ -107,6 +107,32 @@ def test_memory_request_logs_json_record_at_info(client: TestClient, caplog):
 	assert payload["request_id"] == "list-request"
 
 
+def test_unhandled_error_response_includes_request_id(caplog):
+	caplog.set_level(logging.INFO, logger="app.main")
+	test_client = TestClient(app_main.create_app(), raise_server_exceptions=False)
+
+	@test_client.app.get("/raise-unhandled-error")
+	def raise_unhandled_error():
+		raise RuntimeError("contract regression")
+
+	response = test_client.get(
+		"/raise-unhandled-error",
+		headers={"X-Request-Id": "error-request"},
+	)
+
+	assert response.status_code == 500
+	assert response.json() == {"detail": "Internal Server Error"}
+	assert response.headers["X-Request-Id"] == "error-request"
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "GET"
+	assert payload["path"] == "/raise-unhandled-error"
+	assert payload["status"] == 500
+	assert payload["request_id"] == "error-request"
+
+
 def test_health_check_logs_light_json_record_at_debug(client: TestClient, caplog):
 	caplog.set_level(logging.DEBUG, logger="app.main")
 
