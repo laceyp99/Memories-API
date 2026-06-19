@@ -1,4 +1,5 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -10,13 +11,15 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from app.config import load_browser_client_config, load_safety_config
-from app.db import init_db
+from app.db import check_database_readiness, init_db
 from app.mcp_server import mcp
+from app.request_context import REQUEST_ID_HEADER, resolve_request_id, set_request_id_header
 from app.request_limits import (
 	FixedWindowRateLimiter,
 	reject_request_body_if_too_large,
 	reject_request_if_rate_limited,
 )
+from app.request_logging import current_duration_ms, log_http_request
 from app.schemas import (
 	DEFAULT_PAGE_LIMIT,
 	MAX_BATCH_CREATE_MEMORIES,
@@ -97,6 +100,19 @@ def create_app() -> FastAPI:
 	application.state.browser_client_config = browser_client_config
 	application.state.safety_config = safety_config
 	application.state.rate_limiter = FixedWindowRateLimiter()
+
+	@application.exception_handler(Exception)
+	async def unhandled_exception_response(request: Request, _error: Exception) -> JSONResponse:
+		request_id = getattr(
+			request.state,
+			"request_id",
+			resolve_request_id(request.headers.get(REQUEST_ID_HEADER)),
+		)
+		return set_request_id_header(
+			JSONResponse(status_code=500, content={"detail": "Internal Server Error"}),
+			request_id,
+		)
+
 	application.add_middleware(
 		CORSMiddleware,
 		allow_origins=browser_client_config.allowed_origins,
@@ -107,6 +123,7 @@ def create_app() -> FastAPI:
 			"MCP-Protocol-Version",
 			"Mcp-Session-Id",
 			"X-Client-Id",
+			REQUEST_ID_HEADER,
 		],
 		expose_headers=[
 			"Mcp-Session-Id",
@@ -115,17 +132,32 @@ def create_app() -> FastAPI:
 			"X-RateLimit-Remaining",
 			"X-RateLimit-Reset",
 			"X-Request-Body-Limit",
+			REQUEST_ID_HEADER,
 		],
 	)
 
 	@application.middleware("http")
 	async def enforce_request_safety(request: Request, call_next):
+		start_time = time.perf_counter()
+		request_id = resolve_request_id(request.headers.get(REQUEST_ID_HEADER))
+		request.state.request_id = request_id
+
+		def complete_response(response):
+			log_http_request(
+				logger,
+				request,
+				status_code=response.status_code,
+				duration_ms=current_duration_ms(start_time),
+				request_id=request_id,
+			)
+			return set_request_id_header(response, request_id)
+
 		body_limit_response = reject_request_body_if_too_large(
 			request,
 			safety_config.request_body_max_bytes,
 		)
 		if body_limit_response is not None:
-			return body_limit_response
+			return complete_response(body_limit_response)
 
 		rate_limit_response = reject_request_if_rate_limited(
 			request,
@@ -133,14 +165,43 @@ def create_app() -> FastAPI:
 			safety_config,
 		)
 		if rate_limit_response is not None:
-			return rate_limit_response
+			return complete_response(rate_limit_response)
 
 		origin = request.headers.get("origin")
 		if request.url.path.startswith("/mcp") and origin is not None:
 			if origin not in browser_client_config.allowed_origins:
-				return JSONResponse(status_code=403, content={"detail": "Origin not allowed"})
+				return complete_response(
+					JSONResponse(status_code=403, content={"detail": "Origin not allowed"}),
+				)
 
-		return await call_next(request)
+		try:
+			response = await call_next(request)
+		except Exception:
+			log_http_request(
+				logger,
+				request,
+				status_code=500,
+				duration_ms=current_duration_ms(start_time),
+				request_id=request_id,
+			)
+			raise
+
+		return complete_response(response)
+
+	@application.get("/health")
+	def health_check() -> dict[str, str]:
+		return {"status": "ok"}
+
+	@application.get("/ready")
+	def readiness_check():
+		checks = check_database_readiness()
+		if all(status == "ok" for status in checks.values()):
+			return {"status": "ready", "checks": checks}
+
+		return JSONResponse(
+			status_code=503,
+			content={"status": "not_ready", "checks": checks},
+		)
 
 	@application.post("/memories")
 	def post_memory(memory: MemoryCreate) -> Memory:

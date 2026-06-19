@@ -1,10 +1,16 @@
+import json
+import logging
+import sqlite3
 from pathlib import Path
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from helpers.database_helpers import read_database
 
 from app import main as app_main
 from app import storage
+
+REQUEST_LOG_FIELDS = {"method", "path", "status", "duration_ms", "request_id"}
 
 
 def assert_rate_limited(response, limit: int):
@@ -14,6 +20,134 @@ def assert_rate_limited(response, limit: int):
 	assert response.headers["X-RateLimit-Limit"] == str(limit)
 	assert response.headers["X-RateLimit-Remaining"] == "0"
 	assert response.headers["X-RateLimit-Reset"].isdigit()
+
+
+def assert_uuid(value: str):
+	UUID(value)
+
+
+def request_log_payloads(caplog):
+	payloads = []
+	for record in caplog.records:
+		if record.name != "app.main":
+			continue
+		try:
+			payload = json.loads(record.message)
+		except json.JSONDecodeError:
+			continue
+		if set(payload) == REQUEST_LOG_FIELDS:
+			payloads.append((record, payload))
+	return payloads
+
+
+def test_health_check_returns_ping_without_initializing_database(
+	client: TestClient, data_file: Path
+):
+	response = client.get("/health")
+
+	assert response.status_code == 200
+	assert response.json() == {"status": "ok"}
+	assert not data_file.exists()
+
+
+def test_readiness_check_initializes_schema_without_memory_rows(
+	client: TestClient, data_file: Path
+):
+	response = client.get("/ready")
+
+	assert response.status_code == 200
+	assert response.json() == {
+		"status": "ready",
+		"checks": {
+			"database": "ok",
+			"memories_table": "ok",
+		},
+	}
+	with sqlite3.connect(data_file) as connection:
+		table = connection.execute(
+			"""
+			SELECT 1
+			FROM sqlite_master
+			WHERE type = 'table' AND name = 'memories'
+			"""
+		).fetchone()
+	assert table is not None
+	assert read_database(data_file) == []
+
+
+def test_request_id_echoes_valid_client_header(client: TestClient):
+	response = client.get("/health", headers={"X-Request-Id": "agent.123:request-456"})
+
+	assert response.status_code == 200
+	assert response.headers["X-Request-Id"] == "agent.123:request-456"
+
+
+def test_request_id_replaces_invalid_client_header(client: TestClient):
+	response = client.get("/health", headers={"X-Request-Id": "bad request id"})
+
+	assert response.status_code == 200
+	assert response.headers["X-Request-Id"] != "bad request id"
+	assert_uuid(response.headers["X-Request-Id"])
+
+
+def test_memory_request_logs_json_record_at_info(client: TestClient, caplog):
+	caplog.set_level(logging.INFO, logger="app.main")
+
+	response = client.get("/memories", headers={"X-Request-Id": "list-request"})
+
+	assert response.status_code == 200
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "GET"
+	assert payload["path"] == "/memories"
+	assert payload["status"] == 200
+	assert isinstance(payload["duration_ms"], float)
+	assert payload["request_id"] == "list-request"
+
+
+def test_unhandled_error_response_includes_request_id(caplog):
+	caplog.set_level(logging.INFO, logger="app.main")
+	test_client = TestClient(app_main.create_app(), raise_server_exceptions=False)
+
+	@test_client.app.get("/raise-unhandled-error")
+	def raise_unhandled_error():
+		raise RuntimeError("contract regression")
+
+	response = test_client.get(
+		"/raise-unhandled-error",
+		headers={"X-Request-Id": "error-request"},
+	)
+
+	assert response.status_code == 500
+	assert response.json() == {"detail": "Internal Server Error"}
+	assert response.headers["X-Request-Id"] == "error-request"
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "GET"
+	assert payload["path"] == "/raise-unhandled-error"
+	assert payload["status"] == 500
+	assert payload["request_id"] == "error-request"
+
+
+def test_health_check_logs_light_json_record_at_debug(client: TestClient, caplog):
+	caplog.set_level(logging.DEBUG, logger="app.main")
+
+	response = client.get("/health", headers={"X-Request-Id": "probe-request"})
+
+	assert response.status_code == 200
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.DEBUG
+	assert payload["method"] == "GET"
+	assert payload["path"] == "/health"
+	assert payload["status"] == 200
+	assert isinstance(payload["duration_ms"], float)
+	assert payload["request_id"] == "probe-request"
 
 
 def test_post_memory_response_matches_public_contract(
@@ -50,19 +184,31 @@ def test_post_memory_response_matches_public_contract(
 	assert read_database(data_file) == [body]
 
 
-def test_post_memory_rejects_oversized_body_before_json_parsing(monkeypatch, data_file: Path):
+def test_post_memory_rejects_oversized_body_before_json_parsing(
+	monkeypatch, data_file: Path, caplog
+):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	caplog.set_level(logging.INFO, logger="app.main")
 	test_client = TestClient(app_main.create_app())
 
 	response = test_client.post(
 		"/memories",
 		content="x" * 11,
-		headers={"Content-Type": "application/json"},
+		headers={"Content-Type": "application/json", "X-Request-Id": "oversized-request"},
 	)
 
 	assert response.status_code == 413
 	assert response.json() == {"detail": "Request body too large"}
 	assert response.headers["X-Request-Body-Limit"] == "10"
+	assert response.headers["X-Request-Id"] == "oversized-request"
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "POST"
+	assert payload["path"] == "/memories"
+	assert payload["status"] == 413
+	assert payload["request_id"] == "oversized-request"
 	assert read_database(data_file) == []
 
 
@@ -89,6 +235,7 @@ def test_post_memory_rate_limit_uses_client_id_identity(monkeypatch, data_file: 
 	assert first_response.status_code == 200
 	assert "X-RateLimit-Limit" not in first_response.headers
 	assert_rate_limited(second_response, 1)
+	assert_uuid(second_response.headers["X-Request-Id"])
 	assert other_client_response.status_code == 200
 	assert len(read_database(data_file)) == 2
 

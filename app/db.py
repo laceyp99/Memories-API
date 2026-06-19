@@ -68,6 +68,31 @@ def init_db() -> None:
 		_INITIALIZED_DATABASE_FILES.add(database_key)
 
 
+def check_database_readiness() -> dict[str, str]:
+	checks = {
+		"database": "failed",
+		"memories_table": "failed",
+	}
+
+	try:
+		with get_connection() as connection:
+			connection.execute("SELECT 1").fetchone()
+			checks["database"] = "ok"
+			table = connection.execute(
+				"""
+				SELECT 1
+				FROM sqlite_master
+				WHERE type = 'table' AND name = 'memories'
+				"""
+			).fetchone()
+			if table is not None:
+				checks["memories_table"] = "ok"
+	except (OSError, sqlite3.Error):
+		return checks
+
+	return checks
+
+
 def _ensure_db_initialized(database_file: Path) -> None:
 	database_key = _database_key(database_file)
 	if database_key in _INITIALIZED_DATABASE_FILES and database_file.exists():
