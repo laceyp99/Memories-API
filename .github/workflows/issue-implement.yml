@@ -1,0 +1,343 @@
+name: Issue Implementation
+
+on:
+  issues:
+    types:
+      - labeled
+
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number for the agent to implement"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: agent-issue-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    name: Build PR solution for agent-ready issue
+    runs-on: ubuntu-latest
+
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.actor == 'laceyp99' &&
+        github.event.issue.state == 'open' &&
+        github.event.label.name == 'agent-ready'
+      )
+
+    steps:
+      - name: Resolve issue number
+        id: issue
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "number=$INPUT_ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=$EVENT_ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "agent-bot"
+          git config user.email "agent-bot@users.noreply.github.com"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create worktree branch
+        id: branch
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          BRANCH="agent/issue-${ISSUE_NUMBER}-run-${RUN_ID}"
+          git fetch origin
+          git switch "${{ github.event.repository.default_branch || 'main' }}"
+          git pull --ff-only
+          git worktree add "../agent-worktree" -b "$BRANCH"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Capture issue context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          gh issue view "$ISSUE_NUMBER" \
+            --json number,title,body,labels,comments,url \
+            > ../agent-worktree/issue-context.json
+
+      - name: Install dependencies
+        working-directory: ../agent-worktree
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Run Codex implementation
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: gpt-5.5
+          effort: medium
+          working-directory: ../agent-worktree
+          prompt-file: .github/codex/prompts/issue-implement.md
+          sandbox: danger-full-access
+          codex-args: '["--ask-for-approval", "never"]'
+          output-file: codex-issue-implementation.md
+
+      - name: Run project checks if available
+        id: validate
+        working-directory: ../agent-worktree
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          run_check() {
+            echo "$*" > ../agent-validation-failed-command.txt
+            "$@"
+          }
+
+          if [ -f package.json ]; then
+            run_check npm test -- --watch=false || run_check npm test
+          elif [ -f pyproject.toml ]; then
+            run_check ruff format --check .
+            run_check ruff check .
+            run_check pytest
+          elif [ -f Makefile ]; then
+            run_check make test
+          else
+            echo "No standard test command detected."
+            echo "No standard test command detected." > ../agent-validation-failed-command.txt
+            exit 1
+          fi
+
+      - name: Capture failed validation patch
+        if: steps.validate.outcome == 'failure'
+        working-directory: ../agent-worktree
+        shell: bash
+        run: |
+          patch_file="../agent-validation-failure.patch"
+          git diff --binary > "$patch_file"
+
+          while IFS= read -r -d '' file; do
+            git diff --binary --no-index /dev/null "$file" >> "$patch_file" || true
+          done < <(git ls-files --others --exclude-standard -z)
+
+      - name: Upload failed validation patch
+        if: steps.validate.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-validation-failure-${{ steps.issue.outputs.number }}
+          path: ../agent-validation-failure.patch
+          if-no-files-found: ignore
+
+      - name: Read failed validation command
+        if: steps.validate.outcome == 'failure'
+        id: failed_validation
+        shell: bash
+        run: |
+          {
+            echo "command<<EOF"
+            cat ../agent-validation-failed-command.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment when validation failed
+        if: steps.validate.outcome == 'failure'
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          AGENT_SUMMARY: ${{ steps.run_codex.outputs.final-message }}
+          FAILED_VALIDATION: ${{ steps.failed_validation.outputs.command }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: [
+                "## Agent implementation blocked",
+                "",
+                "Validation failed, so no branch was pushed and no pull request was opened.",
+                "",
+                `Failed validation: \`${process.env.FAILED_VALIDATION || "unknown"}\``,
+                "",
+                `Failed run: ${process.env.RUN_URL}`,
+                "",
+                "A patch artifact named `agent-validation-failure-" + process.env.ISSUE_NUMBER + "` was uploaded with the agent's attempted changes.",
+                "",
+                "## Agent notes",
+                "",
+                process.env.AGENT_SUMMARY || "_No additional summary was returned._"
+              ].join("\n")
+            });
+
+      - name: Stop after validation failure
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
+
+      - name: Commit changes if any
+        if: steps.validate.outcome == 'success'
+        id: commit
+        working-directory: ../agent-worktree
+        continue-on-error: true
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git add -A
+
+          forbidden='(^|/)(.*\.db|.*\.sqlite|.*\.sqlite3|.*-journal|.*-wal|.*-shm|\.env(\..*)?|mcp_browser_clients\.local\.json)$'
+          matches="$(git diff --cached --name-only | grep -E "$forbidden" || true)"
+
+          if [ -n "$matches" ]; then
+            echo "Forbidden local artifacts were staged:"
+            echo "$matches"
+            echo "block_reason=forbidden_artifacts" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          git commit -m "Implement issue #${ISSUE_NUMBER}"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+      - name: Comment when forbidden artifacts were blocked
+        if: steps.commit.outcome == 'failure' && steps.commit.outputs.block_reason == 'forbidden_artifacts'
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: [
+                "## Agent implementation blocked",
+                "",
+                "The agent attempted changes that included forbidden local artifacts or private runtime files.",
+                "",
+                "No branch was pushed and no pull request was opened.",
+                "",
+                `Run: ${process.env.RUN_URL}`
+              ].join("\n")
+            });
+
+      - name: Stop after forbidden artifact block
+        if: steps.commit.outcome == 'failure'
+        run: exit 1
+
+      - name: Push branch
+        if: steps.validate.outcome == 'success' && steps.commit.outcome == 'success' && steps.commit.outputs.has_changes == 'true'
+        working-directory: ../agent-worktree
+        env:
+          BRANCH_NAME: ${{ steps.branch.outputs.name }}
+        run: |
+          git push --set-upstream origin "$BRANCH_NAME"
+
+      - name: Open draft pull request
+        id: create_pr
+        if: steps.validate.outcome == 'success' && steps.commit.outcome == 'success' && steps.commit.outputs.has_changes == 'true'
+        working-directory: ../agent-worktree
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          BRANCH_NAME: ${{ steps.branch.outputs.name }}
+          AGENT_SUMMARY: ${{ steps.run_codex.outputs.final-message }}
+        run: |
+          gh pr create \
+            --draft \
+            --base "${{ github.event.repository.default_branch || 'main' }}" \
+            --head "$BRANCH_NAME" \
+            --title "Draft: Implement issue #${ISSUE_NUMBER}" \
+            --body "$(cat <<EOF
+          ## Related Links
+
+          - Closes #${ISSUE_NUMBER}
+
+          ## What
+
+          Agent-generated implementation for issue #${ISSUE_NUMBER}.
+
+          ## Why
+
+          This PR attempts to satisfy the linked issue while keeping the change scope limited to the issue requirements.
+
+          ## How
+
+          ${AGENT_SUMMARY}
+
+          ## Test Steps
+
+          - [x] Agent validation passed: \`ruff format --check .\`, \`ruff check .\`, and \`pytest\`
+          - [ ] Human reviewed the implementation
+          - [ ] Human checked relevant edge cases
+          - [ ] Human confirmed issue requirements are fully satisfied
+
+          ## Other Notes
+
+          This draft PR was created automatically. Human review is required before marking it ready for review or merging.
+
+          EOF
+          )"
+
+      - name: Update issue agent labels
+        if: steps.create_pr.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          gh label create "agent-pr-opened" \
+            --color "1f883d" \
+            --description "An agent-created draft PR is open for this issue." \
+            2>/dev/null || true
+
+          gh issue edit "$ISSUE_NUMBER" \
+            --remove-label "agent-ready" \
+            --add-label "agent-pr-opened"
+
+      - name: Comment when no changes were produced
+        if: steps.validate.outcome == 'success' && steps.commit.outcome == 'success' && steps.commit.outputs.has_changes == 'false'
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          AGENT_SUMMARY: ${{ steps.run_codex.outputs.final-message }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: [
+                "## Agent attempted implementation",
+                "",
+                "The agent did not produce file changes.",
+                "",
+                process.env.AGENT_SUMMARY || "_No additional summary was returned._"
+              ].join("\n")
+            });
