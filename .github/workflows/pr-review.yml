@@ -50,7 +50,7 @@ jobs:
           fi
 
       - name: Checkout PR merge commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           ref: refs/pull/${{ steps.pr.outputs.number }}/merge
           persist-credentials: false
@@ -63,7 +63,7 @@ jobs:
           git fetch --no-tags origin "$BASE_REF" "+refs/pull/$PR_NUMBER/head"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
@@ -119,7 +119,7 @@ jobs:
 
       - name: Run Codex review
         id: run_codex
-        uses: openai/codex-action@v1
+        uses: openai/codex-action@10cb888d2ed3b99867f7e7ccff174a861a75aeb6 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: gpt-5.5
@@ -130,7 +130,7 @@ jobs:
           output-file: codex-pr-review.md
 
       - name: Post review notes as PR comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           REVIEW_BODY: ${{ steps.run_codex.outputs.final-message }}

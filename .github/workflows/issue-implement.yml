@@ -49,7 +49,7 @@ jobs:
           fi
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
 
@@ -59,7 +59,7 @@ jobs:
           git config user.email "agent-bot@users.noreply.github.com"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
@@ -93,7 +93,7 @@ jobs:
 
       - name: Run Codex implementation
         id: run_codex
-        uses: openai/codex-action@v1
+        uses: openai/codex-action@10cb888d2ed3b99867f7e7ccff174a861a75aeb6 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: gpt-5.5
@@ -145,7 +145,7 @@ jobs:
 
       - name: Upload failed validation patch
         if: steps.validate.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: agent-validation-failure-${{ steps.issue.outputs.number }}
           path: ../agent-validation-failure.patch
@@ -164,7 +164,7 @@ jobs:
 
       - name: Comment when validation failed
         if: steps.validate.outcome == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
           AGENT_SUMMARY: ${{ steps.run_codex.outputs.final-message }}
@@ -227,7 +227,7 @@ jobs:
 
       - name: Comment when forbidden artifacts were blocked
         if: steps.commit.outcome == 'failure' && steps.commit.outputs.block_reason == 'forbidden_artifacts'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -323,7 +323,7 @@ jobs:
 
       - name: Comment when no changes were produced
         if: steps.validate.outcome == 'success' && steps.commit.outcome == 'success' && steps.commit.outputs.has_changes == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
           AGENT_SUMMARY: ${{ steps.run_codex.outputs.final-message }}
