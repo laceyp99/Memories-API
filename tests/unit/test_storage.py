@@ -37,6 +37,23 @@ def test_get_memories_applies_free_text_filter_case_insensitively():
 	assert [memory.id for memory in results] == [2]
 
 
+def test_get_memories_treats_free_text_like_wildcards_as_literals():
+	create_memory(MemoryCreate(content="foo_bar", tags=["plain"]))
+	create_memory(MemoryCreate(content="fooXbar", tags=["plain"]))
+	create_memory(MemoryCreate(content="discount 10% today", tags=["sale"]))
+	create_memory(MemoryCreate(content="discount 100 today", tags=["sale"]))
+	create_memory(MemoryCreate(content="path C:\\Temp", tags=["windows"]))
+	create_memory(MemoryCreate(content="path C:Temp", tags=["windows"]))
+
+	underscore_results = get_memories(MemoryListQuery(q="foo_bar"))
+	percent_results = get_memories(MemoryListQuery(q="10%"))
+	backslash_results = get_memories(MemoryListQuery(q="c:\\temp"))
+
+	assert [memory.id for memory in underscore_results] == [1]
+	assert [memory.id for memory in percent_results] == [3]
+	assert [memory.id for memory in backslash_results] == [5]
+
+
 def test_get_memories_applies_structured_filters_with_exact_tag_matching():
 	create_memory(
 		MemoryCreate(

@@ -10,6 +10,7 @@ MEMORY_SORT_COLUMNS = {
 	"updated_at": "updated_at",
 	"last_accessed_at": "last_accessed_at",
 }
+LIKE_ESCAPE_CHARACTER = "\\"
 
 
 class MemoryWriteConflictError(RuntimeError):
@@ -22,6 +23,14 @@ def current_timestamp() -> str:
 
 def _serialize_tags(tags: list[str]) -> str:
 	return json.dumps(tags)
+
+
+def _escape_like_pattern(value: str) -> str:
+	return (
+		value.replace(LIKE_ESCAPE_CHARACTER, LIKE_ESCAPE_CHARACTER * 2)
+		.replace("%", LIKE_ESCAPE_CHARACTER + "%")
+		.replace("_", LIKE_ESCAPE_CHARACTER + "_")
+	)
 
 
 def _row_to_memory(row) -> Memory:
@@ -172,8 +181,8 @@ def _build_memory_filters(query: MemoryListQuery | None) -> tuple[str, list[obje
 		parameters.append(query.tag)
 
 	if query is not None and query.q is not None:
-		query_pattern = f"%{query.q.lower()}%"
-		clauses.append("(LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)")
+		query_pattern = f"%{_escape_like_pattern(query.q.lower())}%"
+		clauses.append("(LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(tags) LIKE ? ESCAPE '\\')")
 		parameters.extend([query_pattern, query_pattern])
 
 	return "WHERE " + " AND ".join(clauses), parameters
