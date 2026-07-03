@@ -29,24 +29,49 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch' ||
       (
-        github.actor == 'laceyp99' &&
+        github.actor == github.repository_owner &&
         github.event.issue.state == 'open' &&
         github.event.label.name == 'agent-ready'
       )
 
     steps:
-      - name: Resolve issue number
+      - name: Resolve and validate issue
         id: issue
         env:
+          GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
           INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          ACTOR: ${{ github.actor }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "number=$INPUT_ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
-          else
-            echo "number=$EVENT_ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          if [ "$ACTOR" != "$REPO_OWNER" ]; then
+            echo "::error::Actor '$ACTOR' is not the repository owner. Refusing to run."
+            exit 1
           fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            ISSUE_NUMBER="$INPUT_ISSUE_NUMBER"
+          else
+            ISSUE_NUMBER="$EVENT_ISSUE_NUMBER"
+          fi
+
+          STATE="$(gh issue view "$ISSUE_NUMBER" -R "$REPO" --json state --jq .state)"
+          if [ "$STATE" != "OPEN" ]; then
+            echo "::error::Issue #$ISSUE_NUMBER is not open (state: $STATE). Refusing to run."
+            exit 1
+          fi
+
+          HAS_LABEL="$(gh issue view "$ISSUE_NUMBER" -R "$REPO" --json labels --jq '[.labels[].name] | contains(["agent-ready"])')"
+          if [ "$HAS_LABEL" != "true" ]; then
+            echo "::error::Issue #$ISSUE_NUMBER does not carry the agent-ready label. Refusing to run."
+            exit 1
+          fi
+
+          echo "number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -83,6 +108,7 @@ jobs:
         run: |
           gh issue view "$ISSUE_NUMBER" \
             --json number,title,body,labels,comments,url \
+            | jq '.comments |= map(select(.authorAssociation == "OWNER" or .authorAssociation == "MEMBER" or .authorAssociation == "COLLABORATOR"))' \
             > ../agent-worktree/issue-context.json
 
       - name: Install dependencies
@@ -100,7 +126,7 @@ jobs:
           effort: medium
           working-directory: ../agent-worktree
           prompt-file: .github/codex/prompts/issue-implement.md
-          sandbox: danger-full-access
+          sandbox: workspace-write
           codex-args: '["--ask-for-approval", "never"]'
           output-file: codex-issue-implementation.md
 
@@ -141,7 +167,8 @@ jobs:
 
           while IFS= read -r -d '' file; do
             git diff --binary --no-index /dev/null "$file" >> "$patch_file" || true
-          done < <(git ls-files --others --exclude-standard -z)
+          done < <(git ls-files --others --exclude-standard -z \
+            | grep -zEv '^(issue-context\.json|codex-issue-implementation\.md)$' || true)
 
       - name: Upload failed validation patch
         if: steps.validate.outcome == 'failure'
@@ -205,6 +232,10 @@ jobs:
         env:
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
         run: |
+          # Remove workflow-generated context/output artifacts so they never
+          # count as changes and never end up in the commit via `git add -A`.
+          rm -f issue-context.json codex-issue-implementation.md
+
           if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -212,7 +243,13 @@ jobs:
 
           git add -A
 
-          forbidden='(^|/)(.*\.db|.*\.sqlite|.*\.sqlite3|.*-journal|.*-wal|.*-shm|\.env(\..*)?|mcp_browser_clients\.local\.json)$'
+          # Block local runtime artifacts, workflow-generated context files,
+          # and any edits under .github/workflows/. The GITHUB_TOKEN cannot
+          # push workflow file changes anyway (it lacks the `workflows`
+          # permission), so catching them here fails cleanly with an issue
+          # comment instead of a cryptic push error — and it stops the agent
+          # from attempting to rewrite its own automation.
+          forbidden='(^|/)(.*\.db|.*\.sqlite|.*\.sqlite3|.*-journal|.*-wal|.*-shm|\.env(\..*)?|mcp_browser_clients\.local\.json|issue-context\.json|codex-issue-implementation\.md)$|^\.github/workflows/'
           matches="$(git diff --cached --name-only | grep -E "$forbidden" || true)"
 
           if [ -n "$matches" ]; then
