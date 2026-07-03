@@ -15,7 +15,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
   issues: write
 
 concurrency:
@@ -65,7 +65,7 @@ jobs:
       # any edits to the review prompt itself. Check out the prompts from the
       # default branch separately so a PR cannot rewrite its own reviewer
       # instructions (prompt injection).
-      - name: Checkout trusted prompts from default branch
+      - name: Checkout trusted Codex assets from default branch
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           ref: ${{ github.event.repository.default_branch || 'main' }}
@@ -183,7 +183,7 @@ jobs:
           effort: ${{ vars.CODEX_EFFORT || 'medium' }}
           prompt-file: trusted-base/.github/codex/prompts/pr-review.md
           sandbox: read-only
-          codex-home: .github/codex/home
+          codex-home: trusted-base/.github/codex/home
           output-file: codex-pr-review.md
 
       - name: Post review notes as PR comment
@@ -217,6 +217,7 @@ jobs:
 
       - name: Comment when PR review workflow failed
         if: ${{ always() && failure() && steps.pr.outputs.number != '' }}
+        continue-on-error: true
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
