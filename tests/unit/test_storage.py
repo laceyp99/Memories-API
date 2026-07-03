@@ -37,6 +37,23 @@ def test_get_memories_applies_free_text_filter_case_insensitively():
 	assert [memory.id for memory in results] == [2]
 
 
+def test_get_memories_treats_free_text_like_wildcards_literally():
+	create_memory(MemoryCreate(content="foo_bar", tags=["literal_under"]))
+	create_memory(MemoryCreate(content="fooXbar", tags=["wild_under"]))
+	create_memory(MemoryCreate(content="100% complete", tags=["literal_percent"]))
+	create_memory(MemoryCreate(content="1000 complete", tags=["wild_percent"]))
+	create_memory(MemoryCreate(content=r"path\_literal", tags=["literal_escape"]))
+	create_memory(MemoryCreate(content="pathXliteral", tags=["wild_escape"]))
+
+	underscore_results = get_memories(MemoryListQuery(q="foo_bar"))
+	percent_results = get_memories(MemoryListQuery(q="100%"))
+	escape_results = get_memories(MemoryListQuery(q=r"path\_"))
+
+	assert [memory.id for memory in underscore_results] == [1]
+	assert [memory.id for memory in percent_results] == [3]
+	assert [memory.id for memory in escape_results] == [5]
+
+
 def test_get_memories_applies_structured_filters_with_exact_tag_matching():
 	create_memory(
 		MemoryCreate(
