@@ -187,6 +187,7 @@ jobs:
           output-file: codex-pr-review.md
 
       - name: Post review notes as PR comment
+        id: post_review_comment
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -212,4 +213,45 @@ jobs:
               repo: context.repo.repo,
               issue_number: Number(process.env.PR_NUMBER),
               body
+            });
+
+      - name: Comment when PR review workflow failed
+        if: ${{ always() && failure() && steps.pr.outputs.number != '' }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+          CODEX_OUTCOME: ${{ steps.run_codex.outcome }}
+          REVIEW_COMMENT_OUTCOME: ${{ steps.post_review_comment.outcome }}
+          VALIDATION_SUMMARY: ${{ steps.validation_summary.outputs.summary }}
+        with:
+          script: |
+            const outcomes = [
+              ["validation", process.env.VALIDATION_OUTCOME],
+              ["Codex review", process.env.CODEX_OUTCOME],
+              ["review comment", process.env.REVIEW_COMMENT_OUTCOME],
+            ].filter(([, outcome]) => outcome && outcome !== "");
+
+            const body = [
+              "## Agent PR review failed",
+              "",
+              "The automated review workflow failed before it could complete the normal review comment.",
+              "",
+              `Run: ${process.env.RUN_URL}`,
+              "",
+              "### Step outcomes",
+              "",
+              ...outcomes.map(([name, outcome]) => `- ${name}: ${outcome}`),
+              "",
+              "## Validation",
+              "",
+              process.env.VALIDATION_SUMMARY || "_Validation result was unavailable._",
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body,
             });
