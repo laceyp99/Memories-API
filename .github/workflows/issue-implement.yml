@@ -25,6 +25,7 @@ jobs:
   implement:
     name: Build PR solution for agent-ready issue
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     if: >
       github.event_name == 'workflow_dispatch' ||
@@ -68,6 +69,12 @@ jobs:
           HAS_LABEL="$(gh issue view "$ISSUE_NUMBER" -R "$REPO" --json labels --jq '[.labels[].name] | contains(["agent-ready"])')"
           if [ "$HAS_LABEL" != "true" ]; then
             echo "::error::Issue #$ISSUE_NUMBER does not carry the agent-ready label. Refusing to run."
+            exit 1
+          fi
+
+          if gh pr list -R "$REPO" --state open --json headRefName --jq '.[].headRefName' \
+            | grep -q "^agent/issue-${ISSUE_NUMBER}-"; then
+            echo "::error::An open agent PR already exists for issue #$ISSUE_NUMBER (branch agent/issue-${ISSUE_NUMBER}-*). Skipping duplicate run."
             exit 1
           fi
 
@@ -122,8 +129,8 @@ jobs:
         uses: openai/codex-action@10cb888d2ed3b99867f7e7ccff174a861a75aeb6 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          model: gpt-5.5
-          effort: medium
+          model: ${{ vars.CODEX_MODEL || 'gpt-5.5' }}
+          effort: ${{ vars.CODEX_EFFORT || 'medium' }}
           working-directory: ../agent-worktree
           prompt-file: .github/codex/prompts/issue-implement.md
           sandbox: workspace-write
@@ -140,7 +147,8 @@ jobs:
 
           run_check() {
             echo "$*" > ../agent-validation-failed-command.txt
-            "$@"
+            echo "\$ $*" >> ../agent-validation-output.log
+            "$@" 2>&1 | tee -a ../agent-validation-output.log
           }
 
           if [ -f package.json ]; then
@@ -178,15 +186,18 @@ jobs:
           path: ../agent-validation-failure.patch
           if-no-files-found: ignore
 
-      - name: Read failed validation command
+      - name: Read failed validation details
         if: steps.validate.outcome == 'failure'
         id: failed_validation
         shell: bash
         run: |
           {
-            echo "command<<EOF"
+            echo "command<<__AGENT_EOF__"
             cat ../agent-validation-failed-command.txt
-            echo "EOF"
+            echo "__AGENT_EOF__"
+            echo "log<<__AGENT_EOF__"
+            tail -n 80 ../agent-validation-output.log 2>/dev/null || echo "No validation output was captured."
+            echo "__AGENT_EOF__"
           } >> "$GITHUB_OUTPUT"
 
       - name: Comment when validation failed
@@ -196,19 +207,28 @@ jobs:
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
           AGENT_SUMMARY: ${{ steps.run_codex.outputs.final-message }}
           FAILED_VALIDATION: ${{ steps.failed_validation.outputs.command }}
+          FAILED_VALIDATION_LOG: ${{ steps.failed_validation.outputs.log }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: Number(process.env.ISSUE_NUMBER),
+              issue_number: issueNumber,
               body: [
                 "## Agent implementation blocked",
                 "",
                 "Validation failed, so no branch was pushed and no pull request was opened.",
                 "",
                 `Failed validation: \`${process.env.FAILED_VALIDATION || "unknown"}\``,
+                "",
+                "### Validation output (tail)",
+                "",
+                "```text",
+                process.env.FAILED_VALIDATION_LOG || "No validation output was captured.",
+                "```",
                 "",
                 `Failed run: ${process.env.RUN_URL}`,
                 "",
@@ -218,6 +238,32 @@ jobs:
                 "",
                 process.env.AGENT_SUMMARY || "_No additional summary was returned._"
               ].join("\n")
+            });
+
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: "agent-blocked",
+                color: "d73a4a",
+                description: "An agent run for this issue failed and needs human attention."
+              });
+            } catch (e) { /* label already exists */ }
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: "agent-ready"
+              });
+            } catch (e) { /* label may already be absent */ }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ["agent-blocked"]
             });
 
       - name: Stop after validation failure
@@ -283,6 +329,34 @@ jobs:
                 "",
                 `Run: ${process.env.RUN_URL}`
               ].join("\n")
+            });
+
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: "agent-blocked",
+                color: "d73a4a",
+                description: "An agent run for this issue failed and needs human attention."
+              });
+            } catch (e) { /* label already exists */ }
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: "agent-ready"
+              });
+            } catch (e) { /* label may already be absent */ }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ["agent-blocked"]
             });
 
       - name: Stop after forbidden artifact block
@@ -377,4 +451,32 @@ jobs:
                 "",
                 process.env.AGENT_SUMMARY || "_No additional summary was returned._"
               ].join("\n")
+            });
+
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: "agent-blocked",
+                color: "d73a4a",
+                description: "An agent run for this issue failed and needs human attention."
+              });
+            } catch (e) { /* label already exists */ }
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: "agent-ready"
+              });
+            } catch (e) { /* label may already be absent */ }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ["agent-blocked"]
             });

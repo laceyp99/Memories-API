@@ -26,6 +26,7 @@ jobs:
   review:
     name: Generate PR review notes
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     # Skip draft PRs if this workflow is ever expanded to opened/synchronize.
     # Fork PRs are not supported: secrets are unavailable and the token is
@@ -77,7 +78,9 @@ jobs:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
         run: |
-          git fetch --no-tags origin "$BASE_REF" "+refs/pull/$PR_NUMBER/head"
+          git fetch --no-tags origin \
+            "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF" \
+            "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr/$PR_NUMBER"
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -96,9 +99,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          ruff format --check .
-          ruff check .
-          pytest
+          {
+            echo "\$ ruff format --check ."
+            ruff format --check .
+            echo "\$ ruff check ."
+            ruff check .
+            echo "\$ pytest"
+            pytest
+          } 2>&1 | tee ../review-validation-output.log
 
       - name: Summarize validation result
         id: validation_summary
@@ -109,25 +117,57 @@ jobs:
         run: |
           if [ "$VALIDATION_OUTCOME" = "success" ]; then
             {
-              echo "summary<<EOF"
+              echo "summary<<__REVIEW_EOF__"
               echo "Validation passed: \`ruff format --check .\`, \`ruff check .\`, and \`pytest\` all completed successfully."
-              echo "EOF"
+              echo "__REVIEW_EOF__"
             } >> "$GITHUB_OUTPUT"
           else
             {
-              echo "summary<<EOF"
+              echo "summary<<__REVIEW_EOF__"
               echo "Validation failed during review context. See run logs: $RUN_URL"
-              echo "EOF"
+              echo
+              echo "Validation output (tail):"
+              echo
+              echo '```text'
+              tail -n 60 ../review-validation-output.log 2>/dev/null || echo "No validation output was captured."
+              echo '```'
+              echo "__REVIEW_EOF__"
             } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Write Codex review context
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
           VALIDATION_SUMMARY: ${{ steps.validation_summary.outputs.summary }}
         shell: bash
         run: |
+          set -euo pipefail
+
+          BASE_SHA="$(git rev-parse "refs/remotes/origin/$BASE_REF")"
+          HEAD_SHA="$(git rev-parse "refs/remotes/origin/pr/$PR_NUMBER")"
+
           {
             echo "# PR Review Context"
+            echo
+            echo "## Pull request"
+            echo
+            gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" \
+              --json number,title,author,url \
+              --template '- PR #{{.number}}: {{.title}} (by @{{.author.login}}){{"\n"}}- URL: {{.url}}{{"\n"}}'
+            echo "- Base branch: $BASE_REF ($BASE_SHA)"
+            echo "- Head ref: refs/pull/$PR_NUMBER/head ($HEAD_SHA)"
+            echo
+            echo "## PR description"
+            echo
+            gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json body --jq '.body // "_No description provided._"'
+            echo
+            echo "## Changed files (base...head)"
+            echo
+            echo '```text'
+            git diff --stat "$BASE_SHA...$HEAD_SHA"
+            echo '```'
             echo
             echo "## Validation"
             echo
@@ -139,8 +179,8 @@ jobs:
         uses: openai/codex-action@10cb888d2ed3b99867f7e7ccff174a861a75aeb6 # v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          model: gpt-5.5
-          effort: medium
+          model: ${{ vars.CODEX_MODEL || 'gpt-5.5' }}
+          effort: ${{ vars.CODEX_EFFORT || 'medium' }}
           prompt-file: trusted-base/.github/codex/prompts/pr-review.md
           sandbox: read-only
           codex-args: '["--ask-for-approval", "never"]'
