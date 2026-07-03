@@ -155,7 +155,7 @@ jobs:
           working-directory: ../agent-worktree
           prompt-file: .github/codex/prompts/issue-implement.md
           sandbox: workspace-write
-          codex-args: '["--ask-for-approval", "never"]'
+          codex-home: .github/codex/home
           output-file: codex-issue-implementation.md
 
       - name: Run project checks if available

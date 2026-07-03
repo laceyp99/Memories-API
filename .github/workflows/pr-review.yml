@@ -183,7 +183,7 @@ jobs:
           effort: ${{ vars.CODEX_EFFORT || 'medium' }}
           prompt-file: trusted-base/.github/codex/prompts/pr-review.md
           sandbox: read-only
-          codex-args: '["--ask-for-approval", "never"]'
+          codex-home: .github/codex/home
           output-file: codex-pr-review.md
 
       - name: Post review notes as PR comment
