@@ -17,6 +17,9 @@ permissions:
   issues: write
   pull-requests: write
 
+# Draft PR creation also requires the repository Actions setting
+# "Allow GitHub Actions to create and approve pull requests".
+# The permissions block above cannot enable that setting by itself.
 concurrency:
   group: agent-issue-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: false
@@ -106,6 +109,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Checkout trusted Codex assets from default branch
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.event.repository.default_branch || 'main' }}
+          path: trusted-base
+          persist-credentials: false
+          sparse-checkout: .github/codex
+
       - name: Configure git identity
         run: |
           git config user.name "agent-bot"
@@ -153,9 +164,9 @@ jobs:
           model: ${{ vars.CODEX_MODEL || 'gpt-5.5' }}
           effort: ${{ vars.CODEX_EFFORT || 'medium' }}
           working-directory: ../agent-worktree
-          prompt-file: .github/codex/prompts/issue-implement.md
+          prompt-file: trusted-base/.github/codex/prompts/issue-implement.md
           sandbox: workspace-write
-          codex-home: .github/codex/home
+          codex-home: trusted-base/.github/codex/home
           output-file: codex-issue-implementation.md
 
       - name: Run project checks if available
@@ -365,6 +376,7 @@ jobs:
         run: exit 1
 
       - name: Push branch
+        id: push
         if: steps.validate.outcome == 'success' && steps.commit.outcome == 'success' && steps.commit.outputs.has_changes == 'true'
         working-directory: ../agent-worktree
         env:
@@ -419,6 +431,7 @@ jobs:
           )"
 
       - name: Update issue agent labels
+        id: update_labels
         if: steps.create_pr.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -450,6 +463,84 @@ jobs:
             });
 
             const issueNumber = Number(process.env.ISSUE_NUMBER);
+
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: "agent-ready"
+              });
+            } catch (e) { /* label may already be absent */ }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ["agent-blocked"]
+            });
+
+      - name: Comment when issue workflow failed
+        if: >
+          always() &&
+          failure() &&
+          steps.issue.outputs.number != '' &&
+          steps.validate.outcome != 'failure' &&
+          (
+            steps.commit.outcome != 'failure' ||
+            steps.commit.outputs.block_reason != 'forbidden_artifacts'
+          )
+        continue-on-error: true
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH_NAME: ${{ steps.branch.outputs.name }}
+          AGENT_SUMMARY: ${{ steps.run_codex.outputs.final-message }}
+          CODEX_OUTCOME: ${{ steps.run_codex.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome }}
+          PUSH_OUTCOME: ${{ steps.push.outcome }}
+          CREATE_PR_OUTCOME: ${{ steps.create_pr.outcome }}
+          LABEL_UPDATE_OUTCOME: ${{ steps.update_labels.outcome }}
+        with:
+          script: |
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+
+            const outcomes = [
+              ["Codex implementation", process.env.CODEX_OUTCOME],
+              ["workflow validation", process.env.VALIDATION_OUTCOME],
+              ["commit", process.env.COMMIT_OUTCOME],
+              ["push", process.env.PUSH_OUTCOME],
+              ["draft PR creation", process.env.CREATE_PR_OUTCOME],
+              ["issue label update", process.env.LABEL_UPDATE_OUTCOME],
+            ].filter(([, outcome]) => outcome && outcome !== "");
+
+            const body = [
+              "## Agent workflow failed",
+              "",
+              "The agent workflow failed after issue validation, so the normal handoff did not complete.",
+              "",
+              process.env.BRANCH_NAME
+                ? `Working branch: \`${process.env.BRANCH_NAME}\``
+                : "Working branch: unavailable",
+              `Run: ${process.env.RUN_URL}`,
+              "",
+              "### Step outcomes",
+              "",
+              ...outcomes.map(([name, outcome]) => `- ${name}: ${outcome}`),
+              "",
+              "## Agent notes",
+              "",
+              process.env.AGENT_SUMMARY || "_No additional summary was returned._",
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body,
+            });
 
             try {
               await github.rest.issues.removeLabel({
