@@ -24,6 +24,10 @@ def _serialize_tags(tags: list[str]) -> str:
 	return json.dumps(tags)
 
 
+def _escape_like_pattern(value: str) -> str:
+	return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _row_to_memory(row) -> Memory:
 	return Memory(
 		id=row["id"],
@@ -172,8 +176,16 @@ def _build_memory_filters(query: MemoryListQuery | None) -> tuple[str, list[obje
 		parameters.append(query.tag)
 
 	if query is not None and query.q is not None:
-		query_pattern = f"%{query.q.lower()}%"
-		clauses.append("(LOWER(content) LIKE ? OR LOWER(tags) LIKE ?)")
+		query_pattern = f"%{_escape_like_pattern(query.q.lower())}%"
+		clauses.append(
+			"("
+			"LOWER(content) LIKE ? ESCAPE '\\' "
+			"OR EXISTS ("
+			"SELECT 1 FROM json_each(memories.tags) "
+			"WHERE LOWER(json_each.value) LIKE ? ESCAPE '\\'"
+			")"
+			")"
+		)
 		parameters.extend([query_pattern, query_pattern])
 
 	return "WHERE " + " AND ".join(clauses), parameters

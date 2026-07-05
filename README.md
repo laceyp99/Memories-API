@@ -144,7 +144,7 @@ HTTP and MCP expose one deterministic retrieval contract.
 - Both accept `status`, `memory_type`, `tag`, `q`, `sort`, `limit`, and `offset`.
 - Both return `items`, `total`, `limit`, `offset`, and `has_more`.
 - `tag` matches exactly.
-- `q` is case-insensitive lexical matching over `content` and tags, not semantic search.
+- `q` is case-insensitive lexical matching over `content` and tags, not semantic search; `%`, `_`, and `\` are treated as literal characters.
 - Filters compose with `AND`.
 - Sort keys are `id`, `created_at`, `updated_at`, and `last_accessed_at`; timestamp sorts are descending with `id DESC` as a tie-breaker.
 - `last_accessed_at` is refreshed only for rows actually returned by `GET /memories/{id}`, `GET /memories`, `search_memories`, and `prime_memory_context`.

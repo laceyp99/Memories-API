@@ -287,7 +287,7 @@ Both surfaces return the same envelope:
 - `status` and `memory_type` are exact structured filters.
 - Retrieval excludes `status=deleted` by default unless the caller explicitly requests `status=deleted`.
 - `tag` is exact matching against the stored tag list.
-- `q` is case-insensitive free-text matching over `content` and stored tags.
+- `q` is case-insensitive free-text matching over `content` and stored tags. `%`, `_`, and `\` are matched literally.
 - Filters compose with `AND`.
 
 This distinction matters because exact filters are predictable and contract-friendly, while `q` provides a lightweight lexical narrowing mechanism without introducing opaque ranking behavior.
