@@ -28,6 +28,15 @@ Before editing, determine:
 - What behavior needs to change
 - What tests or checks should validate the fix
 
+Runtime and validation guidance:
+
+- You are running on an Ubuntu GitHub Actions runner in a temporary worktree.
+- Use non-interactive, Linux-compatible commands. Do not start servers, watchers, or tools that wait for user input.
+- The workflow will run the repository's authoritative validation after you finish. For this repository, that is `ruff format --check .`, `ruff check .`, and `pytest`.
+- During your session, prefer focused tests that cover the files or behavior you changed, plus quick lint or format checks when practical.
+- If a broad validation command appears to hang or stays silent for a reasonable period, interrupt it once, record the command as inconclusive, and finish the handoff so the workflow validation step can run.
+- For broad pytest runs, prefer `pytest` over `pytest -q` so progress is visible in the Actions log.
+
 After editing, return a markdown summary with:
 
 ## Summary
