@@ -177,7 +177,15 @@ def _build_memory_filters(query: MemoryListQuery | None) -> tuple[str, list[obje
 
 	if query is not None and query.q is not None:
 		query_pattern = f"%{_escape_like_pattern(query.q.lower())}%"
-		clauses.append("(LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(tags) LIKE ? ESCAPE '\\')")
+		clauses.append(
+			"("
+			"LOWER(content) LIKE ? ESCAPE '\\' "
+			"OR EXISTS ("
+			"SELECT 1 FROM json_each(memories.tags) "
+			"WHERE LOWER(json_each.value) LIKE ? ESCAPE '\\'"
+			")"
+			")"
+		)
 		parameters.extend([query_pattern, query_pattern])
 
 	return "WHERE " + " AND ".join(clauses), parameters

@@ -54,6 +54,23 @@ def test_get_memories_treats_free_text_like_wildcards_literally():
 	assert [memory.id for memory in escape_results] == [5]
 
 
+def test_get_memories_treats_free_text_like_wildcards_literally_in_tags():
+	create_memory(MemoryCreate(content="First memory", tags=["foo_bar"]))
+	create_memory(MemoryCreate(content="Second memory", tags=["fooXbar"]))
+	create_memory(MemoryCreate(content="Third memory", tags=["100% complete"]))
+	create_memory(MemoryCreate(content="Fourth memory", tags=["1000 complete"]))
+	create_memory(MemoryCreate(content="Fifth memory", tags=[r"path\_literal"]))
+	create_memory(MemoryCreate(content="Sixth memory", tags=["pathXliteral"]))
+
+	underscore_results = get_memories(MemoryListQuery(q="foo_bar"))
+	percent_results = get_memories(MemoryListQuery(q="100%"))
+	escape_results = get_memories(MemoryListQuery(q=r"path\_"))
+
+	assert [memory.id for memory in underscore_results] == [1]
+	assert [memory.id for memory in percent_results] == [3]
+	assert [memory.id for memory in escape_results] == [5]
+
+
 def test_get_memories_applies_structured_filters_with_exact_tag_matching():
 	create_memory(
 		MemoryCreate(
