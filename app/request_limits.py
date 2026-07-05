@@ -38,10 +38,13 @@ class _RateLimitWindow:
 
 
 def request_body_limit_applies(request: Request) -> bool:
-	if request.method.upper() not in BODY_LIMITED_METHODS:
+	return _body_limit_applies(request.method, request.url.path)
+
+
+def _body_limit_applies(method: str, path: str) -> bool:
+	if method.upper() not in BODY_LIMITED_METHODS:
 		return False
 
-	path = request.url.path
 	return path == "/memories" or path.startswith("/memories/") or path.startswith("/mcp")
 
 
@@ -68,12 +71,36 @@ def reject_request_body_if_too_large(request: Request, max_body_bytes: int) -> J
 		and request_body_limit_applies(request)
 		and content_length > max_body_bytes
 	):
-		return JSONResponse(
-			status_code=413,
-			content={"detail": "Request body too large"},
-			headers={REQUEST_BODY_LIMIT_HEADER: str(max_body_bytes)},
-		)
+		return request_body_too_large_response(max_body_bytes)
 
+	return None
+
+
+def request_body_too_large_response(max_body_bytes: int) -> JSONResponse:
+	return JSONResponse(
+		status_code=413,
+		content={"detail": "Request body too large"},
+		headers={REQUEST_BODY_LIMIT_HEADER: str(max_body_bytes)},
+	)
+
+
+async def reject_request_stream_if_too_large(
+	request: Request,
+	max_body_bytes: int,
+) -> JSONResponse | None:
+	if not request_body_limit_applies(request):
+		return None
+
+	chunks: list[bytes] = []
+	total_bytes = 0
+	async for chunk in request.stream():
+		total_bytes += len(chunk)
+		if total_bytes > max_body_bytes:
+			return request_body_too_large_response(max_body_bytes)
+		if chunk:
+			chunks.append(chunk)
+
+	request._body = b"".join(chunks)
 	return None
 
 
