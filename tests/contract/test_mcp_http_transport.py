@@ -37,8 +37,18 @@ def asgi_post(
 	path: str,
 	chunks: list[bytes],
 	headers: dict[str, str] | None = None,
+	*,
+	fail_if_body_read: bool = False,
 ):
-	return asyncio.run(_asgi_post(application, path, chunks, headers or {}))
+	return asyncio.run(
+		_asgi_post(
+			application,
+			path,
+			chunks,
+			headers or {},
+			fail_if_body_read=fail_if_body_read,
+		)
+	)
 
 
 async def _asgi_post(
@@ -46,6 +56,8 @@ async def _asgi_post(
 	path: str,
 	chunks: list[bytes],
 	headers: dict[str, str],
+	*,
+	fail_if_body_read: bool,
 ):
 	response_messages = []
 	request_messages = [
@@ -60,6 +72,8 @@ async def _asgi_post(
 
 	async def receive():
 		nonlocal request_index
+		if fail_if_body_read:
+			raise AssertionError("request body was read before the request was rejected")
 		if request_index < len(request_messages):
 			message = request_messages[request_index]
 			request_index += 1
@@ -149,6 +163,25 @@ def test_mcp_http_rejects_browser_requests_when_no_local_allowlist_exists(
 	assert payload["path"] == "/mcp"
 	assert payload["status"] == 403
 	assert payload["request_id"] == "mcp-origin-check"
+
+
+def test_mcp_http_rejects_disallowed_origin_without_reading_streamed_body(
+	monkeypatch, tmp_path: Path
+):
+	config_path = tmp_path / "missing_mcp_browser_clients.local.json"
+	monkeypatch.setattr(config_module, "MCP_BROWSER_CLIENTS_LOCAL_FILE", config_path)
+	test_app = main_module.create_app()
+
+	status_code, _headers, body = asgi_post(
+		test_app,
+		"/mcp",
+		[b"x" * 100],
+		{"Content-Type": "application/json", "Origin": "http://localhost:3000"},
+		fail_if_body_read=True,
+	)
+
+	assert status_code == 403
+	assert json.loads(body) == {"detail": "Origin not allowed"}
 
 
 def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):

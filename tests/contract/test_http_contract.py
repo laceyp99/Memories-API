@@ -422,7 +422,7 @@ def test_rate_limiting_can_be_disabled(monkeypatch, data_file: Path):
 	assert len(read_database(data_file)) == 2
 
 
-def test_body_size_limit_runs_before_rate_limit(monkeypatch, data_file: Path):
+def test_oversized_request_counts_against_rate_limit(monkeypatch, data_file: Path):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
 	monkeypatch.setenv("MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE", "1")
 	test_app = app_main.create_app()
@@ -434,13 +434,6 @@ def test_body_size_limit_runs_before_rate_limit(monkeypatch, data_file: Path):
 		[b"x" * 11],
 		{"Content-Type": "application/json", "Content-Length": "11"},
 	)
-	first_status_code, _first_headers, _first_body = asgi_request(
-		test_app,
-		"POST",
-		"/memories",
-		[b"{}"],
-		{"Content-Type": "application/json", "Content-Length": "2"},
-	)
 	second_status_code, second_headers, second_body = asgi_request(
 		test_app,
 		"POST",
@@ -451,7 +444,6 @@ def test_body_size_limit_runs_before_rate_limit(monkeypatch, data_file: Path):
 
 	assert oversized_status_code == 413
 	assert json.loads(oversized_body) == {"detail": "Request body too large"}
-	assert first_status_code == 422
 	assert second_status_code == 429
 	assert json.loads(second_body) == {"detail": "Rate limit exceeded"}
 	assert second_headers["retry-after"].isdigit()
