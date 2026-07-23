@@ -242,14 +242,15 @@ def test_mcp_http_accepts_chunked_body_exactly_at_limit(monkeypatch):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", str(len(body)))
 	test_app = main_module.create_app()
 
-	status_code, _headers, _body = asgi_post(
+	status_code, headers, _body = asgi_post(
 		test_app,
 		"/mcp",
 		[body[:1], body[1:]],
 		{"Content-Type": "application/json"},
 	)
 
-	assert status_code != 413
+	assert status_code == 307
+	assert headers["location"] == "http://testserver/mcp/"
 
 
 def test_mcp_http_rate_limit_returns_stable_429(monkeypatch):
