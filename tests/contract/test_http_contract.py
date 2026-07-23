@@ -339,6 +339,24 @@ def test_post_memory_replays_body_without_content_length_under_limit(monkeypatch
 	assert read_database(data_file) == []
 
 
+def test_post_memory_accepts_chunked_body_exactly_at_limit(monkeypatch, data_file: Path):
+	body = b'{"content":"x","tags":["boundary"]}'
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", str(len(body)))
+	test_app = app_main.create_app()
+
+	status_code, _headers, response_body = asgi_request(
+		test_app,
+		"POST",
+		"/memories",
+		[body[:10], body[10:]],
+		{"Content-Type": "application/json"},
+	)
+
+	assert status_code == 200
+	assert json.loads(response_body)["content"] == "x"
+	assert len(read_database(data_file)) == 1
+
+
 def test_post_memory_rate_limit_uses_client_id_identity(monkeypatch, data_file: Path):
 	monkeypatch.setenv("MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE", "1")
 	test_client = TestClient(app_main.create_app())

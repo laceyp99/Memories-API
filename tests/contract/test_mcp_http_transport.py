@@ -221,6 +221,37 @@ def test_mcp_http_rejects_oversized_body_before_transport_parsing(monkeypatch):
 	assert_uuid(headers["x-request-id"])
 
 
+def test_mcp_http_rejects_chunked_oversized_body_without_content_length(monkeypatch):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	test_app = main_module.create_app()
+
+	status_code, headers, body = asgi_post(
+		test_app,
+		"/mcp",
+		[b"x" * 6, b"x" * 5],
+		{"Content-Type": "application/json"},
+	)
+
+	assert status_code == 413
+	assert json.loads(body) == {"detail": "Request body too large"}
+	assert headers["x-request-body-limit"] == "10"
+
+
+def test_mcp_http_accepts_chunked_body_exactly_at_limit(monkeypatch):
+	body = b"{}"
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", str(len(body)))
+	test_app = main_module.create_app()
+
+	status_code, _headers, _body = asgi_post(
+		test_app,
+		"/mcp",
+		[body[:1], body[1:]],
+		{"Content-Type": "application/json"},
+	)
+
+	assert status_code != 413
+
+
 def test_mcp_http_rate_limit_returns_stable_429(monkeypatch):
 	monkeypatch.setenv("MEMORIES_RATE_LIMIT_MCP_PER_MINUTE", "1")
 
