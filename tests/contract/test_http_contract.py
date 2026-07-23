@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import sqlite3
@@ -38,6 +39,76 @@ def request_log_payloads(caplog):
 		if set(payload) == REQUEST_LOG_FIELDS:
 			payloads.append((record, payload))
 	return payloads
+
+
+def asgi_request(
+	application,
+	method: str,
+	path: str,
+	chunks: list[bytes],
+	headers: dict[str, str] | None = None,
+):
+	return asyncio.run(_asgi_request(application, method, path, chunks, headers or {}))
+
+
+async def _asgi_request(
+	application,
+	method: str,
+	path: str,
+	chunks: list[bytes],
+	headers: dict[str, str],
+):
+	response_messages = []
+	request_messages = [
+		{
+			"type": "http.request",
+			"body": chunk,
+			"more_body": index < len(chunks) - 1,
+		}
+		for index, chunk in enumerate(chunks)
+	]
+	request_index = 0
+
+	async def receive():
+		nonlocal request_index
+		if request_index < len(request_messages):
+			message = request_messages[request_index]
+			request_index += 1
+			return message
+		return {"type": "http.disconnect"}
+
+	async def send(message):
+		response_messages.append(message)
+
+	await application(
+		{
+			"type": "http",
+			"asgi": {"version": "3.0"},
+			"http_version": "1.1",
+			"method": method,
+			"scheme": "http",
+			"path": path,
+			"raw_path": path.encode(),
+			"query_string": b"",
+			"headers": [(name.lower().encode(), value.encode()) for name, value in headers.items()],
+			"client": ("testclient", 50000),
+			"server": ("testserver", 80),
+			"root_path": "",
+		},
+		receive,
+		send,
+	)
+
+	response_start = next(
+		message for message in response_messages if message["type"] == "http.response.start"
+	)
+	response_body = b"".join(
+		message.get("body", b"")
+		for message in response_messages
+		if message["type"] == "http.response.body"
+	)
+	response_headers = {name.decode(): value.decode() for name, value in response_start["headers"]}
+	return response_start["status"], response_headers, response_body
 
 
 def test_health_check_returns_ping_without_initializing_database(
@@ -189,18 +260,24 @@ def test_post_memory_rejects_oversized_body_before_json_parsing(
 ):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
 	caplog.set_level(logging.INFO, logger="app.main")
-	test_client = TestClient(app_main.create_app())
+	test_app = app_main.create_app()
 
-	response = test_client.post(
+	status_code, headers, body = asgi_request(
+		test_app,
+		"POST",
 		"/memories",
-		content="x" * 11,
-		headers={"Content-Type": "application/json", "X-Request-Id": "oversized-request"},
+		[b"x" * 11],
+		{
+			"Content-Type": "application/json",
+			"Content-Length": "11",
+			"X-Request-Id": "oversized-request",
+		},
 	)
 
-	assert response.status_code == 413
-	assert response.json() == {"detail": "Request body too large"}
-	assert response.headers["X-Request-Body-Limit"] == "10"
-	assert response.headers["X-Request-Id"] == "oversized-request"
+	assert status_code == 413
+	assert json.loads(body) == {"detail": "Request body too large"}
+	assert headers["x-request-body-limit"] == "10"
+	assert headers["x-request-id"] == "oversized-request"
 	request_logs = request_log_payloads(caplog)
 	assert len(request_logs) == 1
 	record, payload = request_logs[0]
@@ -210,6 +287,74 @@ def test_post_memory_rejects_oversized_body_before_json_parsing(
 	assert payload["status"] == 413
 	assert payload["request_id"] == "oversized-request"
 	assert read_database(data_file) == []
+
+
+def test_post_memory_rejects_oversized_body_without_content_length(
+	monkeypatch, data_file: Path, caplog
+):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	caplog.set_level(logging.INFO, logger="app.main")
+	test_app = app_main.create_app()
+
+	status_code, headers, body = asgi_request(
+		test_app,
+		"POST",
+		"/memories",
+		[b"x" * 6, b"x" * 5],
+		{"Content-Type": "application/json", "X-Request-Id": "streamed-request"},
+	)
+
+	assert status_code == 413
+	assert json.loads(body) == {"detail": "Request body too large"}
+	assert headers["x-request-body-limit"] == "10"
+	assert headers["x-request-id"] == "streamed-request"
+	request_logs = request_log_payloads(caplog)
+	assert len(request_logs) == 1
+	record, payload = request_logs[0]
+	assert record.levelno == logging.INFO
+	assert payload["method"] == "POST"
+	assert payload["path"] == "/memories"
+	assert payload["status"] == 413
+	assert payload["request_id"] == "streamed-request"
+	assert read_database(data_file) == []
+
+
+def test_post_memory_replays_body_without_content_length_under_limit(monkeypatch, data_file: Path):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "100")
+	test_app = app_main.create_app()
+
+	status_code, _headers, body = asgi_request(
+		test_app,
+		"POST",
+		"/memories",
+		[b'{"content": "Learning FastAPI testing"}'],
+		{"Content-Type": "application/json"},
+	)
+
+	assert status_code == 422
+	assert any(
+		error["loc"] == ["body", "tags"] and error["type"] == "missing"
+		for error in json.loads(body)["detail"]
+	)
+	assert read_database(data_file) == []
+
+
+def test_post_memory_accepts_chunked_body_exactly_at_limit(monkeypatch, data_file: Path):
+	body = b'{"content":"x","tags":["boundary"]}'
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", str(len(body)))
+	test_app = app_main.create_app()
+
+	status_code, _headers, response_body = asgi_request(
+		test_app,
+		"POST",
+		"/memories",
+		[body[:10], body[10:]],
+		{"Content-Type": "application/json"},
+	)
+
+	assert status_code == 200
+	assert json.loads(response_body)["content"] == "x"
+	assert len(read_database(data_file)) == 1
 
 
 def test_post_memory_rate_limit_uses_client_id_identity(monkeypatch, data_file: Path):
@@ -295,38 +440,52 @@ def test_rate_limiting_can_be_disabled(monkeypatch, data_file: Path):
 	assert len(read_database(data_file)) == 2
 
 
-def test_body_size_limit_runs_before_rate_limit(monkeypatch, data_file: Path):
+def test_oversized_request_counts_against_rate_limit(monkeypatch, data_file: Path):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
 	monkeypatch.setenv("MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE", "1")
-	test_client = TestClient(app_main.create_app())
+	test_app = app_main.create_app()
 
-	oversized_response = test_client.post(
+	oversized_status_code, _oversized_headers, oversized_body = asgi_request(
+		test_app,
+		"POST",
 		"/memories",
-		content="x" * 11,
-		headers={"Content-Type": "application/json"},
+		[b"x" * 11],
+		{"Content-Type": "application/json", "Content-Length": "11"},
 	)
-	first_counted_response = test_client.post("/memories", json={})
-	second_counted_response = test_client.post("/memories", json={})
+	second_status_code, second_headers, second_body = asgi_request(
+		test_app,
+		"POST",
+		"/memories",
+		[b"{}"],
+		{"Content-Type": "application/json", "Content-Length": "2"},
+	)
 
-	assert oversized_response.status_code == 413
-	assert first_counted_response.status_code == 422
-	assert_rate_limited(second_counted_response, 1)
+	assert oversized_status_code == 413
+	assert json.loads(oversized_body) == {"detail": "Request body too large"}
+	assert second_status_code == 429
+	assert json.loads(second_body) == {"detail": "Rate limit exceeded"}
+	assert second_headers["retry-after"].isdigit()
+	assert second_headers["x-ratelimit-limit"] == "1"
+	assert second_headers["x-ratelimit-remaining"] == "0"
+	assert second_headers["x-ratelimit-reset"].isdigit()
 	assert read_database(data_file) == []
 
 
 def test_patch_memory_rejects_oversized_body_before_json_parsing(monkeypatch, data_file: Path):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
-	test_client = TestClient(app_main.create_app())
+	test_app = app_main.create_app()
 
-	response = test_client.patch(
+	status_code, headers, body = asgi_request(
+		test_app,
+		"PATCH",
 		"/memories/1",
-		content="x" * 11,
-		headers={"Content-Type": "application/json"},
+		[b"x" * 11],
+		{"Content-Type": "application/json", "Content-Length": "11"},
 	)
 
-	assert response.status_code == 413
-	assert response.json() == {"detail": "Request body too large"}
-	assert response.headers["X-Request-Body-Limit"] == "10"
+	assert status_code == 413
+	assert json.loads(body) == {"detail": "Request body too large"}
+	assert headers["x-request-body-limit"] == "10"
 	assert read_database(data_file) == []
 
 

@@ -207,13 +207,13 @@ Runtime limits are configured with environment variables:
 | `MEMORIES_RATE_LIMIT_WRITES_PER_MINUTE` | `30` | Applies to REST create, update, and delete requests. |
 | `MEMORIES_RATE_LIMIT_BATCH_PER_MINUTE` | `10` | Applies to `POST /memories/batch`. |
 | `MEMORIES_RATE_LIMIT_MCP_PER_MINUTE` | `240` | Applies to MCP streamable HTTP traffic under `/mcp`. |
-| `MEMORIES_REQUEST_BODY_MAX_BYTES` | `1048576` | Applies to `POST` and `PATCH` REST/MCP HTTP requests with `Content-Length`. |
+| `MEMORIES_REQUEST_BODY_MAX_BYTES` | `1048576` | Applies to `POST` and `PATCH` REST/MCP HTTP request bodies. |
 
 Rate limiting uses a fixed 60-second in-memory window per process. Clients are identified by a trimmed `X-Client-Id` header, capped at 128 characters, when present; otherwise the client IP is used. A limited request returns `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers.
 
 `/health` and `/ready` are exempt from normal rate limiting.
 
-Request body-size enforcement uses the `Content-Length` header and returns `413` with `X-Request-Body-Limit`. This covers normal local agent clients but does not fully cover oversized chunked or missing-length bodies.
+Request body-size enforcement returns `413` with `X-Request-Body-Limit` when the declared or streamed request body exceeds the configured limit.
 
 For behavioral load checks, use the standalone stress harness at [scripts/rate_limit_stress.py](scripts/rate_limit_stress.py). It exercises mixed agent usage, fast bursts, concurrent floods, and two-agent isolation across REST and MCP surfaces, then writes an HTML report. See [scripts/README.md](scripts/README.md) for setup, tuning options, and result interpretation.
 

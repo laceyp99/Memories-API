@@ -18,6 +18,7 @@ from app.request_limits import (
 	FixedWindowRateLimiter,
 	reject_request_body_if_too_large,
 	reject_request_if_rate_limited,
+	reject_request_stream_if_too_large,
 )
 from app.request_logging import current_duration_ms, log_http_request
 from app.schemas import (
@@ -152,12 +153,12 @@ def create_app() -> FastAPI:
 			)
 			return set_request_id_header(response, request_id)
 
-		body_limit_response = reject_request_body_if_too_large(
-			request,
-			safety_config.request_body_max_bytes,
-		)
-		if body_limit_response is not None:
-			return complete_response(body_limit_response)
+		origin = request.headers.get("origin")
+		if request.url.path.startswith("/mcp") and origin is not None:
+			if origin not in browser_client_config.allowed_origins:
+				return complete_response(
+					JSONResponse(status_code=403, content={"detail": "Origin not allowed"}),
+				)
 
 		rate_limit_response = reject_request_if_rate_limited(
 			request,
@@ -167,12 +168,19 @@ def create_app() -> FastAPI:
 		if rate_limit_response is not None:
 			return complete_response(rate_limit_response)
 
-		origin = request.headers.get("origin")
-		if request.url.path.startswith("/mcp") and origin is not None:
-			if origin not in browser_client_config.allowed_origins:
-				return complete_response(
-					JSONResponse(status_code=403, content={"detail": "Origin not allowed"}),
-				)
+		body_limit_response = reject_request_body_if_too_large(
+			request,
+			safety_config.request_body_max_bytes,
+		)
+		if body_limit_response is not None:
+			return complete_response(body_limit_response)
+
+		body_limit_response = await reject_request_stream_if_too_large(
+			request,
+			safety_config.request_body_max_bytes,
+		)
+		if body_limit_response is not None:
+			return complete_response(body_limit_response)
 
 		try:
 			response = await call_next(request)

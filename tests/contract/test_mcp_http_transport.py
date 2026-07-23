@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import json
 import logging
@@ -29,6 +30,88 @@ def request_log_payloads(caplog):
 		if set(payload) == REQUEST_LOG_FIELDS:
 			payloads.append((record, payload))
 	return payloads
+
+
+def asgi_post(
+	application,
+	path: str,
+	chunks: list[bytes],
+	headers: dict[str, str] | None = None,
+	*,
+	fail_if_body_read: bool = False,
+):
+	return asyncio.run(
+		_asgi_post(
+			application,
+			path,
+			chunks,
+			headers or {},
+			fail_if_body_read=fail_if_body_read,
+		)
+	)
+
+
+async def _asgi_post(
+	application,
+	path: str,
+	chunks: list[bytes],
+	headers: dict[str, str],
+	*,
+	fail_if_body_read: bool,
+):
+	response_messages = []
+	request_messages = [
+		{
+			"type": "http.request",
+			"body": chunk,
+			"more_body": index < len(chunks) - 1,
+		}
+		for index, chunk in enumerate(chunks)
+	]
+	request_index = 0
+
+	async def receive():
+		nonlocal request_index
+		if fail_if_body_read:
+			raise AssertionError("request body was read before the request was rejected")
+		if request_index < len(request_messages):
+			message = request_messages[request_index]
+			request_index += 1
+			return message
+		return {"type": "http.disconnect"}
+
+	async def send(message):
+		response_messages.append(message)
+
+	await application(
+		{
+			"type": "http",
+			"asgi": {"version": "3.0"},
+			"http_version": "1.1",
+			"method": "POST",
+			"scheme": "http",
+			"path": path,
+			"raw_path": path.encode(),
+			"query_string": b"",
+			"headers": [(name.lower().encode(), value.encode()) for name, value in headers.items()],
+			"client": ("testclient", 50000),
+			"server": ("testserver", 80),
+			"root_path": "",
+		},
+		receive,
+		send,
+	)
+
+	response_start = next(
+		message for message in response_messages if message["type"] == "http.response.start"
+	)
+	response_body = b"".join(
+		message.get("body", b"")
+		for message in response_messages
+		if message["type"] == "http.response.body"
+	)
+	response_headers = {name.decode(): value.decode() for name, value in response_start["headers"]}
+	return response_start["status"], response_headers, response_body
 
 
 def build_client_with_fresh_mcp():
@@ -82,6 +165,25 @@ def test_mcp_http_rejects_browser_requests_when_no_local_allowlist_exists(
 	assert payload["request_id"] == "mcp-origin-check"
 
 
+def test_mcp_http_rejects_disallowed_origin_without_reading_streamed_body(
+	monkeypatch, tmp_path: Path
+):
+	config_path = tmp_path / "missing_mcp_browser_clients.local.json"
+	monkeypatch.setattr(config_module, "MCP_BROWSER_CLIENTS_LOCAL_FILE", config_path)
+	test_app = main_module.create_app()
+
+	status_code, _headers, body = asgi_post(
+		test_app,
+		"/mcp",
+		[b"x" * 100],
+		{"Content-Type": "application/json", "Origin": "http://localhost:3000"},
+		fail_if_body_read=True,
+	)
+
+	assert status_code == 403
+	assert json.loads(body) == {"detail": "Origin not allowed"}
+
+
 def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):
 	with build_client_with_browser_config(
 		monkeypatch,
@@ -104,18 +206,51 @@ def test_mcp_http_allows_configured_browser_origin(monkeypatch, tmp_path: Path):
 
 def test_mcp_http_rejects_oversized_body_before_transport_parsing(monkeypatch):
 	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
-	client = TestClient(main_module.create_app())
+	test_app = main_module.create_app()
 
-	response = client.post(
+	status_code, headers, body = asgi_post(
+		test_app,
 		"/mcp",
-		content="x" * 11,
-		headers={"Content-Type": "application/json"},
+		[b"x" * 11],
+		{"Content-Type": "application/json", "Content-Length": "11"},
 	)
 
-	assert response.status_code == 413
-	assert response.json() == {"detail": "Request body too large"}
-	assert response.headers["X-Request-Body-Limit"] == "10"
-	assert_uuid(response.headers["X-Request-Id"])
+	assert status_code == 413
+	assert json.loads(body) == {"detail": "Request body too large"}
+	assert headers["x-request-body-limit"] == "10"
+	assert_uuid(headers["x-request-id"])
+
+
+def test_mcp_http_rejects_chunked_oversized_body_without_content_length(monkeypatch):
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", "10")
+	test_app = main_module.create_app()
+
+	status_code, headers, body = asgi_post(
+		test_app,
+		"/mcp",
+		[b"x" * 6, b"x" * 5],
+		{"Content-Type": "application/json"},
+	)
+
+	assert status_code == 413
+	assert json.loads(body) == {"detail": "Request body too large"}
+	assert headers["x-request-body-limit"] == "10"
+
+
+def test_mcp_http_accepts_chunked_body_exactly_at_limit(monkeypatch):
+	body = b"{}"
+	monkeypatch.setenv("MEMORIES_REQUEST_BODY_MAX_BYTES", str(len(body)))
+	test_app = main_module.create_app()
+
+	status_code, headers, _body = asgi_post(
+		test_app,
+		"/mcp",
+		[body[:1], body[1:]],
+		{"Content-Type": "application/json"},
+	)
+
+	assert status_code == 307
+	assert headers["location"] == "http://testserver/mcp/"
 
 
 def test_mcp_http_rate_limit_returns_stable_429(monkeypatch):
