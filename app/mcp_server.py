@@ -2,6 +2,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.prompts.base import AssistantMessage
+from mcp.server.transport_security import TransportSecuritySettings
 
 from app.db import init_db
 from app.schemas import MemoryCreate, MemoryListQuery, MemoryListResponse, MemoryUpdate
@@ -19,6 +20,12 @@ mcp = FastMCP(
 	stateless_http=True,
 	json_response=True,
 	streamable_http_path="/",
+	# Keep mcp's DNS-rebinding Host check, but also accept Docker clients on the same machine.
+	transport_security=TransportSecuritySettings(
+		enable_dns_rebinding_protection=True,
+		allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*", "host.docker.internal:*"],
+		allowed_origins=["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"],
+	),
 )
 
 SKILL_DIR = Path(__file__).resolve().parent.parent / ".github" / "skills" / "memories"
