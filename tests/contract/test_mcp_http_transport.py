@@ -312,3 +312,36 @@ def test_mcp_http_allows_mcp_request_headers_for_allowed_origin(monkeypatch, tmp
 	assert "Mcp-Session-Id" in response.headers["access-control-allow-headers"]
 	assert "X-Client-Id" in response.headers["access-control-allow-headers"]
 	assert "X-Request-Id" in response.headers["access-control-allow-headers"]
+
+
+def post_mcp_initialize(host: str):
+	importlib.reload(mcp_server_module)
+	reloaded_main = importlib.reload(main_module)
+	with TestClient(reloaded_main.app, base_url=f"http://{host}") as client:
+		return client.post(
+			"/mcp/",
+			headers={"Accept": "application/json, text/event-stream"},
+			json={
+				"jsonrpc": "2.0",
+				"id": 1,
+				"method": "initialize",
+				"params": {
+					"protocolVersion": "2025-03-26",
+					"capabilities": {},
+					"clientInfo": {"name": "test", "version": "0"},
+				},
+			},
+		)
+
+
+def test_mcp_http_accepts_docker_host_header():
+	response = post_mcp_initialize("host.docker.internal:8000")
+
+	assert response.status_code == 200
+	assert response.json()["result"]["serverInfo"]["name"] == "memories-api"
+
+
+def test_mcp_http_rejects_unknown_host_header():
+	response = post_mcp_initialize("attacker.example:8000")
+
+	assert response.status_code == 421
